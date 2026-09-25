@@ -171,6 +171,19 @@ describe('normalization', () => {
     expect(incomeForPeriod([bonus], monthPeriod(2026, 4), 'paydays')).toBe(0);
   });
 
+  it('counts paydays before the entered payday too', () => {
+    // Entered as "next payday Oct 2, 2026" (a Friday): September still has four Fridays.
+    const weekly: Income = { id: 'w', label: 'W', amountCents: 100000, frequency: 'weekly', anchorDate: '2026-10-02' };
+    expect(incomeForPeriod([weekly], monthPeriod(2026, 9), 'paydays')).toBe(400_000);
+    expect(incomeForPeriod([weekly], monthPeriod(2026, 10), 'paydays')).toBe(500_000);
+    expect(incomeForPeriod([weekly], yearPeriod(2026), 'paydays')).toBe(5_200_000);
+
+    // Monthly on the 31st keeps clamping correctly in earlier months, including leap Februaries.
+    const monthly: Income = { id: 'm', label: 'M', amountCents: 300000, frequency: 'monthly', anchorDate: '2028-10-31' };
+    expect(incomeForPeriod([monthly], monthPeriod(2028, 2), 'paydays')).toBe(300_000);
+    expect(incomeForPeriod([monthly], yearPeriod(2027), 'paydays')).toBe(3_600_000);
+  });
+
   it('spreads incomes without a payday even in paydays mode', () => {
     const monthly: Income = { id: 'm', label: 'M', amountCents: 300000, frequency: 'monthly' };
     expect(incomeForPeriod([monthly], monthPeriod(2026, 2), 'paydays')).toBe(300_000);

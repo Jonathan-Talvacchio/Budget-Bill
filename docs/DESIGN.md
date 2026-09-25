@@ -39,6 +39,7 @@ Users add bills from a **catalog of common services** or as **custom** entries. 
 | U1 | create a private vault protected by a passphrase | ✅ |
 | U2 | enter my income (one or more sources: weekly, monthly or yearly) | ✅ |
 | U2b | choose whether income is spread evenly across months or counted on actual paydays | ✅ |
+| U2c | edit an income source (name, amount, frequency, payday) | ✅ |
 | U3 | add a bill by picking a common service (Netflix, rent, electric…) | ✅ |
 | U4 | add a custom bill with any name, amount, frequency, due date and end date | ✅ |
 | U5 | see this month's bills sorted by due date, including which are overdue | ✅ |
@@ -61,7 +62,7 @@ Users add bills from a **catalog of common services** or as **custom** entries. 
 | `/bills` | Every bill sorted by next due date, category filter chips, and average-per-month and per-year totals. |
 | `/bill/new` | Searchable catalog grouped by category, plus **Custom bill**, which leads to the bill form. |
 | `/bill/edit?id=` | Edit or delete a bill. Uses a query parameter, not a dynamic `[id]` segment, so the static export needs a single HTML page. |
-| `/settings` | Income sources, currency, auto-lock timeout, change passphrase, export/import backup, privacy statement, erase all data. |
+| `/settings` | Income sources (add, edit, remove), currency, auto-lock timeout, change passphrase, export/import backup, privacy statement, erase all data. |
 
 The onboarding and unlock screens are rendered **by the root layout instead of the router**. No route and no data can render until the vault is decrypted, and a deep link such as `/settings` still opens after unlocking.
 
@@ -93,7 +94,7 @@ frequency ∈ weekly | monthly | quarterly | yearly
   - `remaining = totalDue − paid`.
 - **Income counting** is the user's choice (`settings.incomeMode`). It can be switched from the overview, Settings, or onboarding:
   - **Spread evenly** (the default): all income is converted to a yearly amount (weekly ×52, monthly ×12, quarterly ×4, yearly ×1), and a month gets 1/12 of it. Months are easy to compare.
-  - **On paydays:** each paycheck counts in the period it lands in, using the income's `anchorDate` and the same recurrence rules as bills. A month with five weekly paydays shows five paychecks, and a year can contain 53 weekly paydays. Income without a payday (entries saved before this option existed) is still spread evenly.
+  - **On paydays:** each paycheck counts in the period it lands in, using the income's `anchorDate` and the same recurrence rules as bills. A month with five weekly paydays shows five paychecks, and a year can contain 53 weekly paydays. The stored payday only fixes the schedule, so paychecks are counted in earlier months too, not just from the entered date onward. Internally the anchor is moved back 400 years, a full Gregorian cycle, so weekdays and leap days line up exactly. Income without a payday (entries saved before this option existed) is still spread evenly.
   - `incomeMode` defaults to `'spread'` in the schema, so older vaults and backups load unchanged.
 - **Left to spend** = `income − totalDue` for the period. A negative value is shown as a shortfall.
 - **Monthly equivalent** of a bill = yearly cost ÷ 12, used on the Bills screen.

@@ -20,13 +20,14 @@ import {
 import { Spacing } from '@/constants/theme';
 import { nextDueDate, todayISO } from '@/domain/billing';
 import { formatDueDate } from '@/domain/format';
-import { parseMoneyToCents } from '@/domain/money';
+import { centsToInput, parseMoneyToCents } from '@/domain/money';
 import {
   AUTO_LOCK_OPTIONS,
   CURRENCIES,
   FREQUENCY_LABELS,
   isoDate,
   type Frequency,
+  type Income,
   type IncomeMode,
 } from '@/domain/schema';
 import { confirmAction, notify } from '@/platform/dialog';
@@ -76,9 +77,39 @@ function IncomeSection() {
   const [payday, setPayday] = useState(todayISO());
   const [error, setError] = useState<string | null>(null);
   const [paydayError, setPaydayError] = useState<string | null>(null);
+  /** The income being edited, or null when the form adds a new one. */
+  const [editingId, setEditingId] = useState<string | null>(null);
   const today = todayISO();
 
-  async function add() {
+  function resetForm() {
+    setEditingId(null);
+    setLabel('');
+    setAmount('');
+    setFrequency('monthly');
+    setPayday(todayISO());
+    setError(null);
+    setPaydayError(null);
+  }
+
+  function startEdit(i: Income) {
+    setEditingId(i.id);
+    setLabel(i.label);
+    setAmount(centsToInput(i.amountCents));
+    setFrequency(i.frequency);
+    // Show the upcoming payday; saving it keeps the same schedule.
+    setPayday((i.anchorDate && nextDueDate({ frequency: i.frequency, anchorDate: i.anchorDate }, today)) || today);
+    setError(null);
+    setPaydayError(null);
+  }
+
+  async function remove(i: Income) {
+    const ok = await confirmAction(`Remove ${i.label}?`, 'This income source will be deleted.', 'Remove');
+    if (!ok) return;
+    if (editingId === i.id) resetForm();
+    await deleteIncome(i.id);
+  }
+
+  async function submit() {
     const cents = parseMoneyToCents(amount);
     const badAmount = cents === null || cents === 0;
     const badPayday = !isoDate.safeParse(payday).success;
@@ -86,14 +117,13 @@ function IncomeSection() {
     setPaydayError(badPayday ? 'Choose a valid date.' : null);
     if (badAmount || badPayday || cents === null) return;
     await saveIncome({
-      id: newId(),
+      id: editingId ?? newId(),
       label: label.trim() || 'Income',
       amountCents: cents,
       frequency,
       anchorDate: payday,
     });
-    setLabel('');
-    setAmount('');
+    resetForm();
   }
 
   return (
@@ -126,11 +156,19 @@ function IncomeSection() {
                   {format(i.amountCents)} · {FREQUENCY_LABELS[i.frequency]} · {paydayText(i.anchorDate, i.frequency, today)}
                 </ThemedText>
               </View>
-              <Button label="Remove" variant="secondary" compact onPress={() => deleteIncome(i.id)} />
+              <Button
+                label={editingId === i.id ? 'Editing…' : 'Edit'}
+                variant="secondary"
+                compact
+                disabled={editingId === i.id}
+                onPress={() => startEdit(i)}
+              />
+              <Button label="Remove" variant="secondary" compact onPress={() => remove(i)} />
             </Row>
             <Divider />
           </View>
         ))}
+        <ThemedText type="smallBold">{editingId ? 'Edit income' : 'Add income'}</ThemedText>
         <Field label="Source" value={label} onChangeText={setLabel} placeholder="Take-home pay" maxLength={60} />
         <Field
           label="Amount"
@@ -143,7 +181,18 @@ function IncomeSection() {
         />
         <Segmented options={INCOME_FREQUENCIES} value={frequency} onChange={setFrequency} />
         <DateField label="Next payday" value={payday} onChange={setPayday} error={paydayError} />
-        <Button label="Add income" variant="secondary" onPress={add} />
+        {editingId ? (
+          <Row>
+            <View style={styles.grow}>
+              <Button label="Save changes" onPress={submit} />
+            </View>
+            <View style={styles.grow}>
+              <Button label="Cancel" variant="secondary" onPress={resetForm} />
+            </View>
+          </Row>
+        ) : (
+          <Button label="Add income" variant="secondary" onPress={submit} />
+        )}
       </Card>
     </>
   );

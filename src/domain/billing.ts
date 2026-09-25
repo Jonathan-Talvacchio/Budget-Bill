@@ -106,6 +106,16 @@ export function yearPeriod(year: number): Period {
 const PER_YEAR: Record<Frequency, number> = { weekly: 52, monthly: 12, quarterly: 4, yearly: 1 };
 
 /**
+ * Moves a payday back 400 years. The Gregorian calendar repeats exactly every
+ * 400 years (146,097 days = 20,871 weeks), so weekdays, month days and leap days
+ * all line up: the schedule is unchanged, it just also covers earlier periods.
+ */
+function paydayScheduleStart(anchorDate: string): string {
+  const { y, m, d } = parseISODate(anchorDate);
+  return toISODate({ y: y - 400, m, d });
+}
+
+/**
  * Income counted in a period.
  * - 'spread': the yearly total is spread evenly, so a month gets 1/12 of it.
  * - 'paydays': each paycheck counts in the period it lands in, so a month with
@@ -115,7 +125,9 @@ const PER_YEAR: Record<Frequency, number> = { weekly: 52, monthly: 12, quarterly
 export function incomeForPeriod(incomes: Income[], period: Period, mode: IncomeMode = 'spread'): number {
   return incomes.reduce((sum, i) => {
     if (mode === 'paydays' && i.anchorDate) {
-      const paydays = occurrencesInRange({ frequency: i.frequency, anchorDate: i.anchorDate }, period.start, period.end);
+      // The payday only fixes the schedule's phase; income repeats before it too.
+      const anchorDate = paydayScheduleStart(i.anchorDate);
+      const paydays = occurrencesInRange({ frequency: i.frequency, anchorDate }, period.start, period.end);
       return sum + paydays.length * i.amountCents;
     }
     const yearly = i.amountCents * PER_YEAR[i.frequency];
