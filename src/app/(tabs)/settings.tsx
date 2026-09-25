@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { useMoney } from '@/components/money';
+import { StrengthMeter } from '@/components/strength-meter';
 import { ThemedText } from '@/components/themed-text';
 import {
   Button,
@@ -164,6 +165,7 @@ function PassphraseSection() {
       <Card>
         <Field label="Current passphrase" value={current} onChangeText={setCurrent} {...secretInputProps} />
         <Field label="New passphrase" value={next} onChangeText={setNext} {...secretInputProps} />
+        {next ? <StrengthMeter passphrase={next} /> : null}
         <Field
           label="Confirm new passphrase"
           value={confirm}

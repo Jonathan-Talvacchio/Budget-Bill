@@ -12,7 +12,7 @@ import { z } from 'zod';
 
 export const KDF_ITERATIONS = 600_000; // OWASP 2023+ guidance for PBKDF2-HMAC-SHA256
 export const MIN_ITERATIONS = 100_000; // refuse obviously weakened envelopes
-export const MIN_PASSPHRASE_LENGTH = 12;
+export const MIN_PASSPHRASE_LENGTH = 4; // user choice; weaker ones get a warning (see passphrase.ts)
 
 export const envelopeSchema = z.object({
   format: z.literal('budget-bill-vault'),

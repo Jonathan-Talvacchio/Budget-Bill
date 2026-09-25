@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { StrengthMeter } from '@/components/strength-meter';
 import { ThemedText } from '@/components/themed-text';
 import {
   Button,
@@ -95,9 +96,9 @@ function CreateVault() {
           value={passphrase}
           onChangeText={setPassphrase}
           error={submitted ? passphraseProblem(passphrase) : null}
-          hint="At least 12 characters. A few random words works well."
           {...secretInputProps}
         />
+        <StrengthMeter passphrase={passphrase} />
         <Field
           label="Confirm passphrase"
           value={confirm}

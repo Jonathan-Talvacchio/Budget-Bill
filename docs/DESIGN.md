@@ -103,7 +103,7 @@ This code has no dependencies and is covered by unit tests: leap years, month-en
 | Threat | Mitigation |
 |---|---|
 | Someone gets the device's browser storage (stolen laptop, shared computer, malware reading files) | The vault is encrypted with AES-256-GCM using a key derived from the passphrase. Only ciphertext is stored. |
-| Offline passphrase guessing on stolen ciphertext | PBKDF2-SHA256 with 600,000 iterations (OWASP guidance), a random 128-bit salt per vault, and a minimum 12-character passphrase. |
+| Offline passphrase guessing on stolen ciphertext | PBKDF2-SHA256 with 600,000 iterations (OWASP guidance), a random 128-bit salt per vault. A live strength meter encourages long passphrases (see §7.3). |
 | Tampering with stored data or backups | AES-GCM authenticates the data. The KDF parameters are bound as associated data (AAD), so lowering the iteration count makes decryption fail. Envelopes below 100k iterations are refused. After decryption the data is validated with zod. |
 | Leaving the app open and unattended | Auto-lock after 1, 5, 15 or 30 minutes of inactivity, measured by wall-clock time so a sleeping or backgrounded tab locks as soon as it returns. A manual **Lock** button. Locking drops the key and the decrypted vault from memory. |
 | Data leaving the device | No backend, analytics, telemetry, remote fonts, CDNs or remote logos. The CSP sets `connect-src 'none'`, so the page *cannot* make network requests even if a bug tried to. |
@@ -130,10 +130,32 @@ store = { format, v:1, kdf, iter, salt, iv, ct }   (base64)
 - **Backups** are the same encrypted envelope, saved as a `.bbvault` file. They are never uploaded anywhere. Restoring a backup requires the passphrase that was in use when it was exported.
 - **Future hardening:** move to Argon2id (memory-hard) through an audited WASM build once one ships well with Expo. The envelope already has a `kdf` field and a version for this migration.
 
-### 7.3 Unlock throttling
+### 7.3 Passphrase policy
+Users may choose a passphrase as short as **4 characters**, so a PIN-style code is allowed. This is a deliberate trade-off in favour of usability.
+
+**How users are encouraged toward stronger passphrases:**
+- `passphraseStrength()` in `src/security/passphrase.ts` estimates guessing entropy from length, character variety and repetition. Well-known passwords are capped at Weak.
+- A live meter shows **Weak / Fair / Good / Strong** with a tip, on onboarding and on change-passphrase. The empty-field hint suggests a few random words.
+- The meter never blocks a weak passphrase.
+
+**Why a weak passphrase matters:**
+- Anyone who obtains a copy of the encrypted data can try guesses offline, where the unlock delay doesn't apply.
+- Their only obstacle is the KDF cost: 600k PBKDF2 iterations, about 0.3–1 s per guess on a normal CPU, and far less per guess on GPUs.
+- A 4-digit PIN (10,000 possibilities) can be found within hours on one CPU, or minutes with specialised hardware.
+- A four-random-word passphrase is out of reach.
+
+**Why the trade-off is acceptable for this threat model:**
+- Short passphrases still protect against casual access.
+- The data never leaves the device unless the user exports a backup.
+
+**Planned:**
+- On mobile, a device-bound key (Keychain/Keystore, §9) will let a short PIN or biometric unlock without being the only thing protecting the data.
+- Moving the KDF to Argon2id raises the cost of every guess.
+
+### 7.4 Unlock throttling
 After 3 wrong attempts, each new attempt waits 1s, 2s, 4s… up to 30s. The counter is kept in memory only, since an attacker who has the ciphertext can bypass any client-side counter. The real protection is the KDF cost. The delay just discourages casual guessing on an unlocked device.
 
-### 7.4 Content-Security-Policy on GitHub Pages
+### 7.5 Content-Security-Policy on GitHub Pages
 Pages cannot set HTTP headers, so `scripts/postexport-pages.mjs` adds a `<meta http-equiv="Content-Security-Policy">` tag to every exported page. The tag contains the computed hashes of that page's inline scripts:
 
 ```
@@ -152,7 +174,7 @@ worker-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-ac
 
 github.io is already on the HSTS preload list, so HTTPS is enforced today.
 
-### 7.5 Privacy commitments (shown in the app)
+### 7.6 Privacy commitments (shown in the app)
 - There is no account, email or phone number, and nothing identifies the user.
 - There are no analytics, crash reporting or trackers of any kind.
 - Data is stored only on the device and encrypted. **Erase all data** clears IndexedDB and local/session storage.

@@ -21,7 +21,7 @@ In scope:
 
 Out of scope:
 - Attacks that require an already-compromised device or browser (malware, malicious extensions).
-- Lack of HTTP security headers that GitHub Pages cannot set (documented in `docs/DESIGN.md` §7.4).
+- Lack of HTTP security headers that GitHub Pages cannot set (documented in `docs/DESIGN.md` §7.5).
 
 ## Design summary
 
