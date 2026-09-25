@@ -38,6 +38,7 @@ Users add bills from a **catalog of common services** or as **custom** entries. 
 |---|---|---|
 | U1 | create a private vault protected by a passphrase | ✅ |
 | U2 | enter my income (one or more sources: weekly, monthly or yearly) | ✅ |
+| U2b | choose whether income is spread evenly across months or counted on actual paydays | ✅ |
 | U3 | add a bill by picking a common service (Netflix, rent, electric…) | ✅ |
 | U4 | add a custom bill with any name, amount, frequency, due date and end date | ✅ |
 | U5 | see this month's bills sorted by due date, including which are overdue | ✅ |
@@ -72,8 +73,8 @@ All data lives in one **vault** object. It is validated with zod (`src/domain/sc
 Vault    { version: 1, bills: Bill[], payments: Payment[], incomes: Income[], settings: Settings }
 Bill     { id, name, catalogId?, category, amountCents, frequency, anchorDate, endDate?, notes?, createdAt, updatedAt }
 Payment  { billId, dueDate, paidAt, amountCents }     // settles one occurrence
-Income   { id, label, amountCents, frequency }
-Settings { currency, autoLockMinutes }
+Income   { id, label, amountCents, frequency, anchorDate? }   // anchorDate = a payday
+Settings { currency, autoLockMinutes, incomeMode: 'spread' | 'paydays' }
 frequency ∈ weekly | monthly | quarterly | yearly
 ```
 
@@ -90,7 +91,10 @@ frequency ∈ weekly | monthly | quarterly | yearly
   - `totalDue` = every occurrence in the period.
   - `paid` = occurrences that have a payment.
   - `remaining = totalDue − paid`.
-- **Income normalization:** all income is converted to a yearly amount (weekly ×52, monthly ×12, quarterly ×4, yearly ×1). A month gets 1/12 of it.
+- **Income counting** is the user's choice (`settings.incomeMode`). It can be switched from the overview, Settings, or onboarding:
+  - **Spread evenly** (the default): all income is converted to a yearly amount (weekly ×52, monthly ×12, quarterly ×4, yearly ×1), and a month gets 1/12 of it. Months are easy to compare.
+  - **On paydays:** each paycheck counts in the period it lands in, using the income's `anchorDate` and the same recurrence rules as bills. A month with five weekly paydays shows five paychecks, and a year can contain 53 weekly paydays. Income without a payday (entries saved before this option existed) is still spread evenly.
+  - `incomeMode` defaults to `'spread'` in the schema, so older vaults and backups load unchanged.
 - **Left to spend** = `income − totalDue` for the period. A negative value is shown as a shortfall.
 - **Monthly equivalent** of a bill = yearly cost ÷ 12, used on the Bills screen.
 
@@ -252,7 +256,9 @@ Custom domains and preview deploys also come with the move. Optional **end-to-en
 
 ## 12. Open questions
 
+*Resolved:* income counting. Users choose between spread evenly and actual paydays (see §6).
+
+
 1. **Licence:** the repository is public. Choose a licence (MIT, or AGPL-3.0 to keep forks open), or none, which means all rights reserved.
 2. **Custom domain** when migrating away from `*.github.io`?
-3. Should income be **counted per actual paycheck date** instead of spread evenly? For example, months with 5 weekly paychecks.
-4. Should overdue unpaid bills from past months **carry forward** into the current month's "still due"?
+3. Should overdue unpaid bills from past months **carry forward** into the current month's "still due"?

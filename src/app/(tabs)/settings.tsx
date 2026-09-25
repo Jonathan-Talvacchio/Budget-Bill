@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { DateField } from '@/components/date-field';
 import { useMoney } from '@/components/money';
 import { StrengthMeter } from '@/components/strength-meter';
 import { ThemedText } from '@/components/themed-text';
@@ -17,9 +18,17 @@ import {
   secretInputProps,
 } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
-import { todayISO } from '@/domain/billing';
+import { nextDueDate, todayISO } from '@/domain/billing';
+import { formatDueDate } from '@/domain/format';
 import { parseMoneyToCents } from '@/domain/money';
-import { AUTO_LOCK_OPTIONS, CURRENCIES, FREQUENCY_LABELS, type Frequency } from '@/domain/schema';
+import {
+  AUTO_LOCK_OPTIONS,
+  CURRENCIES,
+  FREQUENCY_LABELS,
+  isoDate,
+  type Frequency,
+  type IncomeMode,
+} from '@/domain/schema';
 import { confirmAction, notify } from '@/platform/dialog';
 import { filesSupported, pickTextFile, saveTextFile } from '@/platform/files';
 import { passphraseProblem } from '@/security/passphrase';
@@ -43,21 +52,46 @@ const INCOME_FREQUENCIES = (['weekly', 'monthly', 'yearly'] as const).map((f) =>
   label: FREQUENCY_LABELS[f],
 }));
 
+const INCOME_MODE_OPTIONS: { value: IncomeMode; label: string }[] = [
+  { value: 'spread', label: 'Spread evenly' },
+  { value: 'paydays', label: 'On paydays' },
+];
+
+const INCOME_MODE_HELP: Record<IncomeMode, string> = {
+  spread: 'Each month gets an equal share of your yearly income, so months are easy to compare.',
+  paydays:
+    'Income counts in the month each paycheck actually arrives, so a month with an extra payday shows more. Income without a payday set is still spread evenly.',
+};
+
 function IncomeSection() {
   const incomes = useStore((s) => s.vault!.incomes);
+  const incomeMode = useStore((s) => s.vault!.settings.incomeMode);
+  const updateSettings = useStore((s) => s.updateSettings);
   const saveIncome = useStore((s) => s.saveIncome);
   const deleteIncome = useStore((s) => s.deleteIncome);
   const format = useMoney();
   const [label, setLabel] = useState('');
   const [amount, setAmount] = useState('');
   const [frequency, setFrequency] = useState<Frequency>('monthly');
+  const [payday, setPayday] = useState(todayISO());
   const [error, setError] = useState<string | null>(null);
+  const [paydayError, setPaydayError] = useState<string | null>(null);
+  const today = todayISO();
 
   async function add() {
     const cents = parseMoneyToCents(amount);
-    if (cents === null || cents === 0) return setError('Enter an amount like 3200 or 3200.50');
-    setError(null);
-    await saveIncome({ id: newId(), label: label.trim() || 'Income', amountCents: cents, frequency });
+    const badAmount = cents === null || cents === 0;
+    const badPayday = !isoDate.safeParse(payday).success;
+    setError(badAmount ? 'Enter an amount like 3200 or 3200.50' : null);
+    setPaydayError(badPayday ? 'Choose a valid date.' : null);
+    if (badAmount || badPayday || cents === null) return;
+    await saveIncome({
+      id: newId(),
+      label: label.trim() || 'Income',
+      amountCents: cents,
+      frequency,
+      anchorDate: payday,
+    });
     setLabel('');
     setAmount('');
   }
@@ -66,6 +100,18 @@ function IncomeSection() {
     <>
       <SectionTitle>Income</SectionTitle>
       <Card>
+        <ThemedText type="small" themeColor="textSecondary">
+          How should income be counted?
+        </ThemedText>
+        <Segmented
+          options={INCOME_MODE_OPTIONS}
+          value={incomeMode}
+          onChange={(m) => updateSettings({ incomeMode: m })}
+        />
+        <ThemedText type="small" themeColor="textSecondary">
+          {INCOME_MODE_HELP[incomeMode]}
+        </ThemedText>
+        <Divider />
         {incomes.length === 0 && (
           <ThemedText type="small" themeColor="textSecondary">
             Add take-home pay so the overview can show what is left to spend.
@@ -77,7 +123,7 @@ function IncomeSection() {
               <View style={styles.grow}>
                 <ThemedText>{i.label}</ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
-                  {format(i.amountCents)} · {FREQUENCY_LABELS[i.frequency]}
+                  {format(i.amountCents)} · {FREQUENCY_LABELS[i.frequency]} · {paydayText(i.anchorDate, i.frequency, today)}
                 </ThemedText>
               </View>
               <Button label="Remove" variant="secondary" compact onPress={() => deleteIncome(i.id)} />
@@ -96,10 +142,17 @@ function IncomeSection() {
           error={error}
         />
         <Segmented options={INCOME_FREQUENCIES} value={frequency} onChange={setFrequency} />
+        <DateField label="Next payday" value={payday} onChange={setPayday} error={paydayError} />
         <Button label="Add income" variant="secondary" onPress={add} />
       </Card>
     </>
   );
+}
+
+function paydayText(anchorDate: string | undefined, frequency: Frequency, today: string): string {
+  if (!anchorDate) return 'no payday set (spread evenly)';
+  const next = nextDueDate({ frequency, anchorDate }, today);
+  return next ? `next payday ${formatDueDate(next)}` : 'no upcoming payday';
 }
 
 function PreferencesSection() {

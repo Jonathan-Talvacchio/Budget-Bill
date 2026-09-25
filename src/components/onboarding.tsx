@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { DateField } from '@/components/date-field';
 import { StrengthMeter } from '@/components/strength-meter';
 import { ThemedText } from '@/components/themed-text';
 import {
@@ -15,8 +16,16 @@ import {
   secretInputProps,
 } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
+import { todayISO } from '@/domain/billing';
 import { parseMoneyToCents } from '@/domain/money';
-import { CURRENCIES, FREQUENCY_LABELS, type Currency, type Frequency } from '@/domain/schema';
+import {
+  CURRENCIES,
+  FREQUENCY_LABELS,
+  isoDate,
+  type Currency,
+  type Frequency,
+  type IncomeMode,
+} from '@/domain/schema';
 import { filesSupported, pickTextFile } from '@/platform/files';
 import { passphraseProblem } from '@/security/passphrase';
 import { newId, useStore } from '@/state/store';
@@ -61,25 +70,29 @@ function CreateVault() {
   const [currency, setCurrency] = useState<Currency>('USD');
   const [income, setIncome] = useState('');
   const [incomeFrequency, setIncomeFrequency] = useState<Frequency>('monthly');
+  const [payday, setPayday] = useState(todayISO());
+  const [incomeMode, setIncomeMode] = useState<IncomeMode>('spread');
   const [submitted, setSubmitted] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const problem = passphraseProblem(passphrase, confirm);
   const incomeCents = income.trim() ? parseMoneyToCents(income) : 0;
   const incomeError = incomeCents === null ? 'Enter an amount like 3200 or 3200.50' : null;
+  const paydayError = incomeCents && !isoDate.safeParse(payday).success ? 'Choose a valid date.' : null;
 
   async function submit() {
     setSubmitted(true);
-    if (problem || incomeError || !acknowledged || incomeCents === null) return;
+    if (problem || incomeError || paydayError || !acknowledged || incomeCents === null) return;
     setBusy(true);
     try {
-      await createVault(passphrase, { currency });
+      await createVault(passphrase, { currency, incomeMode });
       if (incomeCents > 0) {
         await saveIncome({
           id: newId(),
           label: 'Take-home pay',
           amountCents: incomeCents,
           frequency: incomeFrequency,
+          anchorDate: payday,
         });
       }
     } finally {
@@ -150,6 +163,26 @@ function CreateVault() {
           error={submitted ? incomeError : null}
         />
         <Segmented options={INCOME_FREQUENCIES} value={incomeFrequency} onChange={setIncomeFrequency} />
+        <DateField
+          label="Next payday"
+          value={payday}
+          onChange={setPayday}
+          error={submitted ? paydayError : null}
+        />
+        <ThemedText type="small" themeColor="textSecondary">
+          Count income in each month by
+        </ThemedText>
+        <Segmented
+          options={[
+            { value: 'spread', label: 'Spreading it evenly' },
+            { value: 'paydays', label: 'Actual paydays' },
+          ]}
+          value={incomeMode}
+          onChange={setIncomeMode}
+        />
+        <ThemedText type="small" themeColor="textSecondary">
+          You can change this any time from the overview or Settings.
+        </ThemedText>
       </Card>
 
       <Button label="Create encrypted vault" onPress={submit} busy={busy} />

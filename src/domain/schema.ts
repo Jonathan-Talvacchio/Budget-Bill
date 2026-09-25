@@ -30,6 +30,14 @@ export type Currency = (typeof CURRENCIES)[number];
 
 export const AUTO_LOCK_OPTIONS = [1, 5, 15, 30] as const;
 
+/**
+ * How income is counted in a month/year:
+ * - 'spread': the yearly total is spread evenly (each month gets 1/12)
+ * - 'paydays': each paycheck counts in the period it is paid (needs Income.anchorDate)
+ */
+export const INCOME_MODES = ['spread', 'paydays'] as const;
+export type IncomeMode = (typeof INCOME_MODES)[number];
+
 const ISO_DATE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 export const isoDate = z.string().regex(ISO_DATE, 'Expected YYYY-MM-DD');
 
@@ -68,12 +76,16 @@ export const incomeSchema = z.object({
   label: text(60).min(1),
   amountCents: cents,
   frequency: z.enum(FREQUENCIES),
+  /** A payday; later paydays repeat from here. Needed for the 'paydays' income mode. */
+  anchorDate: isoDate.optional(),
 });
 export type Income = z.infer<typeof incomeSchema>;
 
 export const settingsSchema = z.object({
   currency: z.enum(CURRENCIES),
   autoLockMinutes: z.number().int().min(1).max(60),
+  // Defaulted so vaults and backups saved before this setting existed still load.
+  incomeMode: z.enum(INCOME_MODES).default('spread'),
 });
 export type Settings = z.infer<typeof settingsSchema>;
 
@@ -92,7 +104,7 @@ export function emptyVault(settings?: Partial<Settings>): Vault {
     bills: [],
     payments: [],
     incomes: [],
-    settings: { currency: 'USD', autoLockMinutes: 5, ...settings },
+    settings: { currency: 'USD', autoLockMinutes: 5, incomeMode: 'spread', ...settings },
   };
 }
 

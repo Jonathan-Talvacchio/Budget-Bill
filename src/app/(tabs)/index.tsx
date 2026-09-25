@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Money, useMoney } from '@/components/money';
 import { ThemedText } from '@/components/themed-text';
-import { Button, Card, Divider, Row, Screen, SectionTitle, Segmented } from '@/components/ui';
+import { Button, Card, Chip, Divider, Row, Screen, SectionTitle, Segmented } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import {
   monthPeriod,
@@ -32,7 +32,7 @@ export default function Dashboard() {
 
   const period = view === 'month' ? monthPeriod(year, month) : yearPeriod(year);
   const summary = useMemo(
-    () => summarize(vault.bills, vault.payments, vault.incomes, period),
+    () => summarize(vault.bills, vault.payments, vault.incomes, period, vault.settings.incomeMode),
     [vault, period.start, period.end], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const step = (dir: 1 | -1) => setCursor((c) => c + dir * (view === 'month' ? 1 : 12));
@@ -61,6 +61,7 @@ export default function Dashboard() {
         <Stat label="Still due" cents={summary.remaining} />
         <Stat label="Income" cents={summary.income} />
       </View>
+      {vault.incomes.length > 0 && <IncomeModeToggle />}
 
       {vault.bills.length === 0 ? (
         <Card>
@@ -107,6 +108,29 @@ function LeftToSpend({ income, left }: { income: number; left: number }) {
         </ThemedText>
       ) : null}
     </Card>
+  );
+}
+
+/** Lets the user choose how income is counted, right where the numbers are shown. */
+function IncomeModeToggle() {
+  const mode = useStore((s) => s.vault!.settings.incomeMode);
+  const updateSettings = useStore((s) => s.updateSettings);
+  return (
+    <Row style={styles.wrap}>
+      <ThemedText type="small" themeColor="textSecondary">
+        Count income:
+      </ThemedText>
+      <Chip
+        label="Spread evenly"
+        selected={mode === 'spread'}
+        onPress={() => updateSettings({ incomeMode: 'spread' })}
+      />
+      <Chip
+        label="On paydays"
+        selected={mode === 'paydays'}
+        onPress={() => updateSettings({ incomeMode: 'paydays' })}
+      />
+    </Row>
   );
 }
 
@@ -213,6 +237,7 @@ const styles = StyleSheet.create({
   arrow: { paddingHorizontal: Spacing.three },
   hero: { alignItems: 'flex-start' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
+  wrap: { flexWrap: 'wrap' },
   stat: { flexGrow: 1, flexBasis: 140 },
   statValue: { fontSize: 20, fontWeight: 600 },
   item: { paddingVertical: Spacing.two },

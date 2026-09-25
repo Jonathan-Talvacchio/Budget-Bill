@@ -9,6 +9,13 @@ describe('vault schema', () => {
     expect(vaultSchema.safeParse(emptyVault()).success).toBe(true);
   });
 
+  it('loads vaults saved before the income mode setting existed', () => {
+    const old = { ...emptyVault(), settings: { currency: 'USD', autoLockMinutes: 5 } };
+    const parsed = vaultSchema.safeParse(old);
+    expect(parsed.success && parsed.data.settings.incomeMode).toBe('spread');
+    expect(vaultSchema.safeParse({ ...old, settings: { ...old.settings, incomeMode: 'weekly' } }).success).toBe(false);
+  });
+
   it('rejects fractional or negative amounts and bad dates', () => {
     const base = {
       id: 'x',

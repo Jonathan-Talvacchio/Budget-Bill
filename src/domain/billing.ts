@@ -3,7 +3,10 @@
  * strings and all arithmetic is done on calendar fields (or UTC days), so the
  * results never depend on the device time zone or daylight saving.
  */
-import type { Bill, Frequency, Income, Payment } from './schema';
+import type { Bill, Frequency, Income, IncomeMode, Payment } from './schema';
+
+/** Anything that repeats on a schedule: a bill, or an income with a payday. */
+export type Recurring = { frequency: Frequency; anchorDate: string; endDate?: string };
 
 export type YMD = { y: number; m: number; d: number }; // m is 1-12
 
@@ -52,7 +55,7 @@ const MONTH_STEP: Record<Exclude<Frequency, 'weekly'>, number> = {
  * A due day that doesn't exist in a month is moved to that month's last day
  * (the 31st becomes the 30th, or Feb 28/29), without drifting later months.
  */
-export function occurrencesInRange(bill: Bill, start: string, end: string): string[] {
+export function occurrencesInRange(bill: Recurring, start: string, end: string): string[] {
   const from = bill.anchorDate > start ? bill.anchorDate : start;
   const to = bill.endDate && bill.endDate < end ? bill.endDate : end;
   if (from > to) return [];
@@ -102,10 +105,22 @@ export function yearPeriod(year: number): Period {
 
 const PER_YEAR: Record<Frequency, number> = { weekly: 52, monthly: 12, quarterly: 4, yearly: 1 };
 
-/** Income is spread evenly: a month gets 1/12 of the yearly total. */
-export function incomeForPeriod(incomes: Income[], kind: Period['kind']): number {
-  const yearly = incomes.reduce((sum, i) => sum + i.amountCents * PER_YEAR[i.frequency], 0);
-  return kind === 'year' ? yearly : Math.round(yearly / 12);
+/**
+ * Income counted in a period.
+ * - 'spread': the yearly total is spread evenly, so a month gets 1/12 of it.
+ * - 'paydays': each paycheck counts in the period it lands in, so a month with
+ *   five weekly paydays shows five paychecks. Incomes without a payday set
+ *   fall back to being spread evenly.
+ */
+export function incomeForPeriod(incomes: Income[], period: Period, mode: IncomeMode = 'spread'): number {
+  return incomes.reduce((sum, i) => {
+    if (mode === 'paydays' && i.anchorDate) {
+      const paydays = occurrencesInRange({ frequency: i.frequency, anchorDate: i.anchorDate }, period.start, period.end);
+      return sum + paydays.length * i.amountCents;
+    }
+    const yearly = i.amountCents * PER_YEAR[i.frequency];
+    return sum + (period.kind === 'year' ? yearly : Math.round(yearly / 12));
+  }, 0);
 }
 
 /** Average monthly cost of a bill, e.g. a $120/yr bill -> $10/mo. */
@@ -139,6 +154,7 @@ export function summarize(
   payments: Payment[],
   incomes: Income[],
   period: Period,
+  incomeMode: IncomeMode = 'spread',
 ): PeriodSummary {
   const paidByKey = new Map(payments.map((p) => [paymentKey(p.billId, p.dueDate), p]));
   const occurrences: Occurrence[] = [];
@@ -159,7 +175,7 @@ export function summarize(
 
   const totalDue = occurrences.reduce((s, o) => s + o.amountCents, 0);
   const paid = occurrences.reduce((s, o) => s + (o.paid ? o.amountCents : 0), 0);
-  const income = incomeForPeriod(incomes, period.kind);
+  const income = incomeForPeriod(incomes, period, incomeMode);
   return {
     totalDue,
     paid,
@@ -171,7 +187,7 @@ export function summarize(
 }
 
 /** The next due date on or after `from`, looking ahead up to two years. */
-export function nextDueDate(bill: Bill, from: string): string | null {
+export function nextDueDate(bill: Recurring, from: string): string | null {
   const { y, m, d } = parseISODate(from);
   const horizon = toISODate({ y: y + 2, m, d: Math.min(d, daysInMonth(y + 2, m)) });
   return occurrencesInRange(bill, from, horizon)[0] ?? null;

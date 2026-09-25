@@ -150,8 +150,36 @@ describe('summaries', () => {
 describe('normalization', () => {
   it('spreads income over months', () => {
     const weekly: Income = { id: 'w', label: 'W', amountCents: 100000, frequency: 'weekly' };
-    expect(incomeForPeriod([weekly], 'year')).toBe(5_200_000);
-    expect(incomeForPeriod([weekly], 'month')).toBe(433_333);
+    expect(incomeForPeriod([weekly], yearPeriod(2026))).toBe(5_200_000);
+    expect(incomeForPeriod([weekly], monthPeriod(2026, 7))).toBe(433_333);
+    // Spread is the default even when a payday is known.
+    expect(incomeForPeriod([{ ...weekly, anchorDate: '2026-01-02' }], monthPeriod(2026, 7))).toBe(433_333);
+  });
+
+  it('counts actual paychecks in paydays mode', () => {
+    // Fridays from 2026-01-02: July 2026 has five (3, 10, 17, 24, 31), June has four.
+    const weekly: Income = { id: 'w', label: 'W', amountCents: 100000, frequency: 'weekly', anchorDate: '2026-01-02' };
+    expect(incomeForPeriod([weekly], monthPeriod(2026, 7), 'paydays')).toBe(500_000);
+    expect(incomeForPeriod([weekly], monthPeriod(2026, 6), 'paydays')).toBe(400_000);
+    expect(incomeForPeriod([weekly], yearPeriod(2026), 'paydays')).toBe(5_200_000);
+    // 2026 starts and ends on a Thursday, so a Thursday payday lands 53 times.
+    const thursday = { ...weekly, anchorDate: '2026-01-01' };
+    expect(incomeForPeriod([thursday], yearPeriod(2026), 'paydays')).toBe(5_300_000);
+
+    const bonus: Income = { id: 'q', label: 'Bonus', amountCents: 250000, frequency: 'quarterly', anchorDate: '2026-03-15' };
+    expect(incomeForPeriod([bonus], monthPeriod(2026, 3), 'paydays')).toBe(250_000);
+    expect(incomeForPeriod([bonus], monthPeriod(2026, 4), 'paydays')).toBe(0);
+  });
+
+  it('spreads incomes without a payday even in paydays mode', () => {
+    const monthly: Income = { id: 'm', label: 'M', amountCents: 300000, frequency: 'monthly' };
+    expect(incomeForPeriod([monthly], monthPeriod(2026, 2), 'paydays')).toBe(300_000);
+  });
+
+  it('uses the income mode in summaries', () => {
+    const weekly: Income = { id: 'w', label: 'W', amountCents: 100000, frequency: 'weekly', anchorDate: '2026-01-02' };
+    expect(summarize([], [], [weekly], monthPeriod(2026, 7), 'paydays').leftToSpend).toBe(500_000);
+    expect(summarize([], [], [weekly], monthPeriod(2026, 7)).leftToSpend).toBe(433_333);
   });
 
   it('gives a monthly equivalent', () => {
