@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Budget-Bill",
+    "name": "Budget Bill",
     "slug": "Budget-Bill",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -21,7 +21,12 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "name": "Budget Bill",
+      "shortName": "Budget Bill",
+      "description": "Private, offline-first bill and subscription tracker.",
+      "themeColor": "#1F6FEB",
+      "backgroundColor": "#F6F7F9"
     },
     "plugins": [
       "expo-router",
@@ -36,7 +41,8 @@
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": true
+      "reactCompiler": true,
+      "baseUrl": "/Budget-Bill"
     }
   }
 }

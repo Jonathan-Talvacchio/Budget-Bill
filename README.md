@@ -1,56 +1,26 @@
-# Welcome to your Expo app 👋
+# Budget Bill
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A private, offline-first tracker for recurring bills and subscriptions. See what's due this month or this year, what you've already paid, and **how much is left to spend** after bills.
 
-## Get started
+- 🔒 **Encrypted on your device.** AES-256-GCM with a key derived from your passphrase (PBKDF2-SHA256, 600k iterations).
+- 🚫 **No accounts, servers, analytics or trackers.** The page's Content-Security-Policy blocks all network requests.
+- 📋 **60+ common bills and services** to pick from, or add your own.
+- 💾 **Encrypted backup files** for moving between browsers and devices.
 
-1. Install dependencies
+Web first (GitHub Pages). Android and iOS come from the same Expo codebase later. Read the full [design document](docs/DESIGN.md) and the [security policy](SECURITY.md).
 
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Development
 
 ```bash
-npm run reset-project
+npm install
+npm run web            # dev server
+npm run check          # typecheck + lint + unit tests
+npm run build:web      # production static export to dist/ (with CSP)
+npm run preview:web    # serve dist/ like GitHub Pages at http://localhost:4173/Budget-Bill/
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Deploying
 
-### Other setup steps
+Every push to `main` runs `.github/workflows/deploy.yml`, which tests, builds and publishes to GitHub Pages. One-time setup: in the repository's **Settings → Pages**, set **Source** to **GitHub Actions**.
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+If the repository is renamed, update `experiments.baseUrl` in `app.json` and `BASE` in `scripts/serve-pages.mjs` to match.

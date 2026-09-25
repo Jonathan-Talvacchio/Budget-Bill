@@ -39,3 +39,12 @@ Docs: https://docs.expo.dev/eas/index.md
 - If `ios/` and `android/` directories do not exist, they are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.json` and config plugins.
 - Expo Go only includes its bundled native modules. After adding a library with native code, the app needs a development build: `npx expo run:ios|android` locally, or `eas build --profile development`.
 - Prefer recommended Expo modules over third-party libraries, and check your available skills before adding dependencies. Docs: https://docs.expo.dev/versions/latest/index.md
+
+## Budget Bill project rules
+
+- Design doc: `docs/DESIGN.md`. Update it when behaviour, data model or security posture changes.
+- Security and privacy come first. Never add analytics, remote fonts or images, CDNs, or any runtime network call. The exported CSP sets `connect-src 'none'`.
+- Money is integer cents; dates are `YYYY-MM-DD` strings. Recurrence math lives only in `src/domain/billing.ts` and must stay unit-tested.
+- All persisted or imported data goes through the zod schemas in `src/domain/schema.ts`. Plaintext must never reach `src/storage/`.
+- Web is deployed to GitHub Pages under `/Budget-Bill` (`experiments.baseUrl`). No dynamic route segments: use query params (e.g. `/bill/edit?id=`).
+- Verify with `npm run check` and `npm run build:web`, then smoke-test with `npm run preview:web`.

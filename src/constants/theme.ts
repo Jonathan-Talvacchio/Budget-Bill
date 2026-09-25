@@ -1,6 +1,5 @@
 /**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
+ * App colors for light and dark mode, plus shared spacing and fonts.
  */
 
 import '@/global.css';
@@ -9,18 +8,28 @@ import { Platform } from 'react-native';
 
 export const Colors = {
   light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
+    text: '#11181C',
+    background: '#F6F7F9',
+    backgroundElement: '#FFFFFF',
+    backgroundSelected: '#E6E8EC',
+    textSecondary: '#5E6570',
+    border: '#DDE1E6',
+    tint: '#1F6FEB',
+    onTint: '#FFFFFF',
+    positive: '#1A7F37',
+    negative: '#CF222E',
   },
   dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
+    text: '#ECEDEE',
+    background: '#0D1117',
+    backgroundElement: '#161B22',
+    backgroundSelected: '#262C36',
+    textSecondary: '#9BA3AF',
+    border: '#30363D',
+    tint: '#4C8DF6',
+    onTint: '#FFFFFF',
+    positive: '#3FB950',
+    negative: '#F85149',
   },
 } as const;
 
@@ -61,5 +70,5 @@ export const Spacing = {
   six: 64,
 } as const;
 
-export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
-export const MaxContentWidth = 800;
+export const Radius = 12;
+export const MaxContentWidth = 720;
