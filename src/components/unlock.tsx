@@ -11,6 +11,7 @@ export function Unlock() {
   const unlock = useStore((s) => s.unlock);
   const wipe = useStore((s) => s.wipe);
   const failedAttempts = useStore((s) => s.failedAttempts);
+  const protection = useStore((s) => s.protection);
   const [passphrase, setPassphrase] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -37,6 +38,26 @@ export function Unlock() {
       'Erase',
     );
     if (ok) await wipe();
+  }
+
+  if (protection === 'device') {
+    // A vault without a passphrase only reaches this screen if its device key is gone.
+    return (
+      <Screen>
+        <View style={styles.header}>
+          <ThemedText type="subtitle">Budget Bill</ThemedText>
+        </View>
+        <Card>
+          <ThemedText>Your data can’t be opened in this browser.</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            It was saved without a passphrase, and the key this browser kept for it is missing or
+            damaged (for example after clearing site data). If you have a backup file, erase and
+            restore it.
+          </ThemedText>
+        </Card>
+        <Button label="Erase and start over" variant="danger" onPress={reset} />
+      </Screen>
+    );
   }
 
   return (

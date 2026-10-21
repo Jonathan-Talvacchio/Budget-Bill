@@ -22,10 +22,11 @@ function LockButton() {
 
 export default function TabLayout() {
   const theme = useTheme();
+  const canLock = useStore((s) => s.protection === 'passphrase');
   return (
     <Tabs
       screenOptions={{
-        headerRight: () => <LockButton />,
+        headerRight: canLock ? () => <LockButton /> : undefined,
         tabBarActiveTintColor: theme.tint,
         tabBarInactiveTintColor: theme.textSecondary,
         tabBarIconStyle: { display: 'none' },

@@ -207,6 +207,7 @@ function paydayText(anchorDate: string | undefined, frequency: Frequency, today:
 function PreferencesSection() {
   const settings = useStore((s) => s.vault!.settings);
   const updateSettings = useStore((s) => s.updateSettings);
+  const hasPassphrase = useStore((s) => s.protection === 'passphrase');
   return (
     <>
       <SectionTitle>Preferences</SectionTitle>
@@ -224,20 +225,41 @@ function PreferencesSection() {
             />
           ))}
         </Row>
-        <ThemedText type="small" themeColor="textSecondary">
-          Lock automatically after inactivity
-        </ThemedText>
-        <Segmented
-          options={AUTO_LOCK_OPTIONS.map((m) => ({ value: m, label: `${m} min` }))}
-          value={settings.autoLockMinutes}
-          onChange={(m) => updateSettings({ autoLockMinutes: m })}
-        />
+        {hasPassphrase && (
+          <>
+            <ThemedText type="small" themeColor="textSecondary">
+              Lock automatically after inactivity
+            </ThemedText>
+            <Segmented
+              options={AUTO_LOCK_OPTIONS.map((m) => ({ value: m, label: `${m} min` }))}
+              value={settings.autoLockMinutes}
+              onChange={(m) => updateSettings({ autoLockMinutes: m })}
+            />
+          </>
+        )}
       </Card>
     </>
   );
 }
 
 function PassphraseSection() {
+  const hasPassphrase = useStore((s) => s.protection === 'passphrase');
+  return (
+    <>
+      <SectionTitle>Passphrase</SectionTitle>
+      {hasPassphrase ? (
+        <>
+          <ChangePassphrase />
+          <RemovePassphrase />
+        </>
+      ) : (
+        <SetPassphrase />
+      )}
+    </>
+  );
+}
+
+function ChangePassphrase() {
   const changePassphrase = useStore((s) => s.changePassphrase);
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
@@ -262,42 +284,138 @@ function PassphraseSection() {
   }
 
   return (
-    <>
-      <SectionTitle>Passphrase</SectionTitle>
-      <Card>
-        <Field label="Current passphrase" value={current} onChangeText={setCurrent} {...secretInputProps} />
-        <Field label="New passphrase" value={next} onChangeText={setNext} {...secretInputProps} />
-        {next ? <StrengthMeter passphrase={next} /> : null}
-        <Field
-          label="Confirm new passphrase"
-          value={confirm}
-          onChangeText={setConfirm}
-          error={error}
-          {...secretInputProps}
-        />
-        <Button
-          label="Change passphrase"
-          variant="secondary"
-          onPress={submit}
-          busy={busy}
-          disabled={!current || !next}
-        />
-      </Card>
-    </>
+    <Card>
+      <Field label="Current passphrase" value={current} onChangeText={setCurrent} {...secretInputProps} />
+      <Field label="New passphrase" value={next} onChangeText={setNext} {...secretInputProps} />
+      {next ? <StrengthMeter passphrase={next} /> : null}
+      <Field
+        label="Confirm new passphrase"
+        value={confirm}
+        onChangeText={setConfirm}
+        error={error}
+        {...secretInputProps}
+      />
+      <Button
+        label="Change passphrase"
+        variant="secondary"
+        onPress={submit}
+        busy={busy}
+        disabled={!current || !next}
+      />
+    </Card>
+  );
+}
+
+function RemovePassphrase() {
+  const removePassphrase = useStore((s) => s.removePassphrase);
+  const [current, setCurrent] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    const ok = await confirmAction(
+      'Remove your passphrase?',
+      'Budget Bill will open without asking for anything, and anyone who can use this browser will be able to see your bills and income.',
+      'Remove',
+    );
+    if (!ok) return;
+    setBusy(true);
+    setError(null);
+    try {
+      if (!(await removePassphrase(current))) return setError('Current passphrase is not correct.');
+      setCurrent('');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card>
+      <ThemedText type="small" themeColor="textSecondary">
+        Don’t want to type a passphrase? You can remove it. Your data stays on this device, but
+        anyone who can use this browser will be able to see it.
+      </ThemedText>
+      <Field
+        label="Current passphrase"
+        value={current}
+        onChangeText={setCurrent}
+        error={error}
+        {...secretInputProps}
+      />
+      <Button label="Remove passphrase" variant="secondary" onPress={submit} busy={busy} disabled={!current} />
+    </Card>
+  );
+}
+
+function SetPassphrase() {
+  const setPassphrase = useStore((s) => s.setPassphrase);
+  const [next, setNext] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    const problem = passphraseProblem(next, confirm);
+    if (problem) return setError(problem);
+    setBusy(true);
+    setError(null);
+    try {
+      await setPassphrase(next);
+      setNext('');
+      setConfirm('');
+      notify('Passphrase set', 'Budget Bill will now ask for your passphrase when it opens.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card>
+      <ThemedText type="small" themeColor="negative">
+        No passphrase is set. Anyone who can use this browser can open Budget Bill and see your
+        data.
+      </ThemedText>
+      <ThemedText type="small" themeColor="textSecondary">
+        Add a passphrase to lock your data. There is no reset, so choose one you will remember.
+      </ThemedText>
+      <Field label="New passphrase" value={next} onChangeText={setNext} {...secretInputProps} />
+      <StrengthMeter passphrase={next} />
+      <Field
+        label="Confirm passphrase"
+        value={confirm}
+        onChangeText={setConfirm}
+        error={error}
+        {...secretInputProps}
+      />
+      <Button label="Set passphrase" onPress={submit} busy={busy} disabled={!next} />
+    </Card>
   );
 }
 
 function BackupSection() {
   const exportBackup = useStore((s) => s.exportBackup);
   const importBackup = useStore((s) => s.importBackup);
+  const hasPassphrase = useStore((s) => s.protection === 'passphrase');
   const [file, setFile] = useState<string | null>(null);
   const [passphrase, setPassphrase] = useState('');
+  // Without a vault passphrase, the backup file gets its own.
+  const [backupPass, setBackupPass] = useState('');
+  const [backupConfirm, setBackupConfirm] = useState('');
+  const [exportError, setExportError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function doExport() {
+    if (!hasPassphrase) {
+      const problem = passphraseProblem(backupPass, backupConfirm);
+      if (problem) return setExportError(problem);
+    }
+    setExportError(null);
     try {
-      await saveTextFile(`budget-bill-${todayISO()}.bbvault`, await exportBackup());
+      const json = await exportBackup(hasPassphrase ? undefined : backupPass);
+      await saveTextFile(`budget-bill-${todayISO()}.bbvault`, json);
+      setBackupPass('');
+      setBackupConfirm('');
     } catch (e) {
       notify('Export failed', (e as Error).message);
     }
@@ -316,7 +434,9 @@ function BackupSection() {
     if (!file) return;
     const ok = await confirmAction(
       'Replace all data?',
-      'Everything currently in Budget Bill on this device will be replaced by the backup, and the backup’s passphrase becomes your passphrase.',
+      hasPassphrase
+        ? 'Everything currently in Budget Bill on this device will be replaced by the backup, and the backup’s passphrase becomes your passphrase.'
+        : 'Everything currently in Budget Bill on this device will be replaced by the backup.',
       'Replace',
     );
     if (!ok) return;
@@ -339,9 +459,23 @@ function BackupSection() {
       <SectionTitle>Backup</SectionTitle>
       <Card>
         <ThemedText type="small" themeColor="textSecondary">
-          Backups are encrypted with your current passphrase and saved as a file on your device.
-          Use them to move your data to another browser or device.
+          {hasPassphrase
+            ? 'Backups are encrypted with your current passphrase and saved as a file on your device. Use them to move your data to another browser or device.'
+            : 'Backups are saved as a file on your device and encrypted with a passphrase you choose here. You will need it to restore the backup.'}
         </ThemedText>
+        {!hasPassphrase && (
+          <>
+            <Field label="Backup passphrase" value={backupPass} onChangeText={setBackupPass} {...secretInputProps} />
+            {backupPass ? <StrengthMeter passphrase={backupPass} /> : null}
+            <Field
+              label="Confirm backup passphrase"
+              value={backupConfirm}
+              onChangeText={setBackupConfirm}
+              error={exportError}
+              {...secretInputProps}
+            />
+          </>
+        )}
         <Button label="Export encrypted backup" variant="secondary" onPress={doExport} />
         <Divider />
         <Button
@@ -352,7 +486,7 @@ function BackupSection() {
         {file && (
           <>
             <Field
-              label="Backup passphrase"
+              label="Passphrase of this backup"
               value={passphrase}
               onChangeText={setPassphrase}
               {...secretInputProps}
@@ -371,14 +505,15 @@ function BackupSection() {
 }
 
 function PrivacySection() {
+  const hasPassphrase = useStore((s) => s.protection === 'passphrase');
   return (
     <>
       <SectionTitle>Privacy</SectionTitle>
       <Card>
         <ThemedText type="small" themeColor="textSecondary">
-          Budget Bill has no accounts, servers, analytics or trackers. Your bills and income are
-          encrypted (AES-256-GCM) with a key made from your passphrase and stored only in this
-          browser. Nothing is sent over the network. The passphrase itself is never stored.
+          {hasPassphrase
+            ? 'Budget Bill has no accounts, servers, analytics or trackers. Your bills and income are encrypted (AES-256-GCM) with a key made from your passphrase and stored only in this browser. Nothing is sent over the network. The passphrase itself is never stored.'
+            : 'Budget Bill has no accounts, servers, analytics or trackers. Your bills and income are encrypted (AES-256-GCM) and stored only in this browser, together with the key that opens them, so anyone using this browser can see them. Nothing is sent over the network.'}
         </ThemedText>
       </Card>
     </>

@@ -36,7 +36,7 @@ Users add bills from a **catalog of common services** or as **custom** entries. 
 
 | # | As a user I want to… | MVP |
 |---|---|---|
-| U1 | create a private vault protected by a passphrase | ✅ |
+| U1 | create a private vault protected by a passphrase, or skip the passphrase | ✅ |
 | U2 | enter my income (one or more sources: weekly, monthly or yearly) | ✅ |
 | U2b | choose whether income is spread evenly across months or counted on actual paydays | ✅ |
 | U2c | edit an income source (name, amount, frequency, payday) | ✅ |
@@ -107,10 +107,10 @@ This code has no dependencies and is covered by unit tests: leap years, month-en
 
 | Threat | Mitigation |
 |---|---|
-| Someone gets the device's browser storage (stolen laptop, shared computer, malware reading files) | The vault is encrypted with AES-256-GCM using a key derived from the passphrase. Only ciphertext is stored. |
+| Someone gets the device's browser storage (stolen laptop, shared computer, malware reading files) | With a passphrase, the vault is encrypted with AES-256-GCM using a key derived from it, and only ciphertext is stored. **Without a passphrase there is no protection against this** (see §7.4). |
 | Offline passphrase guessing on stolen ciphertext | PBKDF2-SHA256 with 600,000 iterations (OWASP guidance), a random 128-bit salt per vault. A live strength meter encourages long passphrases (see §7.3). |
 | Tampering with stored data or backups | AES-GCM authenticates the data. The KDF parameters are bound as associated data (AAD), so lowering the iteration count makes decryption fail. Envelopes below 100k iterations are refused. After decryption the data is validated with zod. |
-| Leaving the app open and unattended | Auto-lock after 1, 5, 15 or 30 minutes of inactivity, measured by wall-clock time so a sleeping or backgrounded tab locks as soon as it returns. A manual **Lock** button. Locking drops the key and the decrypted vault from memory. |
+| Leaving the app open and unattended | With a passphrase: auto-lock after 1, 5, 15 or 30 minutes of inactivity, measured by wall-clock time so a sleeping or backgrounded tab locks as soon as it returns. A manual **Lock** button. Locking drops the key and the decrypted vault from memory. |
 | Data leaving the device | No backend, analytics, telemetry, remote fonts, CDNs or remote logos. The CSP sets `connect-src 'none'`, so the page *cannot* make network requests even if a bug tried to. |
 | XSS / script injection | A strict CSP: `script-src 'self'` plus the SHA-256 hash of the single inline hydration script, and `default-src 'none'`. React escapes all text, and ESLint forbids `dangerouslySetInnerHTML`, `eval` and `new Function`. |
 | Supply-chain compromise | Few dependencies (template extras removed), lockfile committed, `npm ci` in CI, Dependabot, CodeQL, `npm audit` gate for production dependencies, and GitHub Actions granted the least permissions they need. |
@@ -128,11 +128,16 @@ key   = PBKDF2-SHA256(passphrase, salt, 600k) → AES-GCM-256, non-extractable
 iv    = random 12 bytes, fresh for every save
 AAD   = "budget-bill-vault|v1|PBKDF2-SHA256|<iter>|<salt>"
 store = { format, v:1, kdf, iter, salt, iv, ct }   (base64)
+
+no passphrase (§7.4):
+key   = random AES-GCM-256, non-extractable, kept in IndexedDB as a CryptoKey
+AAD   = "budget-bill-vault|v1|DEVICE-KEY"
+store = { format, v:1, kdf:"DEVICE-KEY", iv, ct }
 ```
 
 - No password hash or verifier is stored. A successful authenticated decryption proves the passphrase is correct.
 - The `CryptoKey` is **non-extractable**. It lives in a module variable, never in React state, and is dropped on lock.
-- **Backups** are the same encrypted envelope, saved as a `.bbvault` file. They are never uploaded anywhere. Restoring a backup requires the passphrase that was in use when it was exported.
+- **Backups** are always passphrase-encrypted envelopes, saved as a `.bbvault` file and never uploaded anywhere. With a vault passphrase, the stored envelope is exported as-is. Without one, the user picks a passphrase for that file, because the device key cannot leave the device. Restoring needs the passphrase the file was encrypted with. Device-key envelopes are never accepted as backups.
 - **Future hardening:** move to Argon2id (memory-hard) through an audited WASM build once one ships well with Expo. The envelope already has a `kdf` field and a version for this migration.
 
 ### 7.3 Passphrase policy
@@ -157,10 +162,30 @@ Users may choose a passphrase as short as **4 characters**, so a PIN-style code 
 - On mobile, a device-bound key (Keychain/Keystore, §9) will let a short PIN or biometric unlock without being the only thing protecting the data.
 - Moving the KDF to Argon2id raises the cost of every guess.
 
-### 7.4 Unlock throttling
+### 7.4 Using Budget Bill without a passphrase
+The passphrase is **optional**. Setup offers "Passphrase (recommended)" or "No passphrase", and Settings can add or remove one at any time. Removing one requires the current passphrase.
+
+**How it works:**
+- Without a passphrase, a random AES-256-GCM key is generated with WebCrypto and stored in IndexedDB as a non-extractable `CryptoKey`. Page scripts can use it but can never read its bytes.
+- The vault is still saved encrypted, so plaintext never reaches storage and there is one storage format.
+- The app opens straight to the data. There is no lock screen, Lock button or auto-lock, because there is nothing to unlock.
+
+**What it protects, and what it doesn't:**
+- The key sits next to the data in the same browser profile. Anyone who can use that browser, or who copies the profile, can open the vault. Treat this mode as **unprotected at rest**.
+- The other guarantees still hold: nothing leaves the device (CSP `connect-src 'none'`), there are no accounts or trackers, and backups are passphrase-encrypted.
+- The UI states this plainly: at setup (with an "I understand" acknowledgement), in Settings → Passphrase, and in the privacy statement.
+
+**Switching modes:**
+- *Adding a passphrase* re-encrypts the vault with a passphrase key. The device key is deleted only after that copy is saved.
+- *Removing a passphrase* stores a new device key first, then re-encrypts with it, so a failure never strands the data.
+- *Restoring a backup* into a vault without a passphrase keeps it without one. Restoring during setup adopts the backup's passphrase, which can be removed later.
+
+**If the device key is lost:** for example, the user clears site data for the key but not the vault. The data can't be decrypted. The app shows a locked screen that explains this and offers "Erase and start over". It never falls through to setup, which would overwrite the data.
+
+### 7.5 Unlock throttling
 After 3 wrong attempts, each new attempt waits 1s, 2s, 4s… up to 30s. The counter is kept in memory only, since an attacker who has the ciphertext can bypass any client-side counter. The real protection is the KDF cost. The delay just discourages casual guessing on an unlocked device.
 
-### 7.5 Content-Security-Policy on GitHub Pages
+### 7.6 Content-Security-Policy on GitHub Pages
 Pages cannot set HTTP headers, so `scripts/postexport-pages.mjs` adds a `<meta http-equiv="Content-Security-Policy">` tag to every exported page. The tag contains the computed hashes of that page's inline scripts:
 
 ```
@@ -179,10 +204,10 @@ worker-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-ac
 
 github.io is already on the HSTS preload list, so HTTPS is enforced today.
 
-### 7.6 Privacy commitments (shown in the app)
+### 7.7 Privacy commitments (shown in the app)
 - There is no account, email or phone number, and nothing identifies the user.
 - There are no analytics, crash reporting or trackers of any kind.
-- Data is stored only on the device and encrypted. **Erase all data** clears IndexedDB and local/session storage.
+- Data is stored only on the device and always encrypted. Only a passphrase keeps it private from others who use the same browser. **Erase all data** clears IndexedDB and local/session storage.
 - The source code is public so anyone can audit these claims.
 
 ## 8. Architecture

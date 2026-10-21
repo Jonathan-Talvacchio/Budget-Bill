@@ -21,13 +21,14 @@ In scope:
 
 Out of scope:
 - Attacks that require an already-compromised device or browser (malware, malicious extensions).
-- Lack of HTTP security headers that GitHub Pages cannot set (documented in `docs/DESIGN.md` §7.5).
+- Reading a vault that has no passphrase from the same browser profile. That mode is documented as unprotected at rest (`docs/DESIGN.md` §7.4).
+- Lack of HTTP security headers that GitHub Pages cannot set (documented in `docs/DESIGN.md` §7.6).
 
 ## Design summary
 
 - **Encryption:** the vault is encrypted with AES-256-GCM, using a non-extractable key derived with PBKDF2-SHA256 (600,000 iterations, random 128-bit salt).
 - **Tamper protection:** the KDF parameters are authenticated as associated data.
 - **Network:** no data leaves the device, and the CSP sets `connect-src 'none'`.
-- **Passphrase:** there is no server-side recovery; the passphrase is never stored.
+- **Passphrase:** optional. There is no server-side recovery, and the passphrase is never stored. Without one, a non-extractable device key in the browser encrypts the vault, which keeps plaintext out of storage but doesn't protect against anyone using that browser.
 
 See [docs/DESIGN.md](docs/DESIGN.md) §7 for the full threat model.

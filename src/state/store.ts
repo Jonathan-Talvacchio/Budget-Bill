@@ -2,6 +2,10 @@
  * App state. The decrypted vault and its key live only in memory while the app
  * is unlocked; every change is re-encrypted and written to storage immediately.
  * Locking drops both, so nothing readable remains in the JS heap we control.
+ *
+ * A vault is protected either by a passphrase or, if the user chose not to set
+ * one, by a device key stored in this browser (see security/crypto.ts). A
+ * device-key vault opens without a lock screen and cannot be locked.
  */
 import { create } from 'zustand';
 
@@ -16,18 +20,25 @@ import {
 } from '@/domain/schema';
 import {
   DecryptError,
+  decryptJSON,
   encryptJSON,
+  newDeviceKey,
   newVaultKey,
   openEnvelope,
+  parseBackupEnvelope,
   parseEnvelope,
+  type PassphraseEnvelope,
   type VaultKey,
 } from '@/security/crypto';
 import { vaultStore } from '@/storage';
 
 export type Status = 'loading' | 'new' | 'locked' | 'unlocked';
+export type Protection = 'passphrase' | 'device';
 
 type State = {
   status: Status;
+  /** How the stored vault is protected; null until known (or for a new vault). */
+  protection: Protection | null;
   vault: Vault | null;
   /** Consecutive failed unlocks; drives an increasing delay. */
   failedAttempts: number;
@@ -35,11 +46,17 @@ type State = {
 
 type Actions = {
   init(): Promise<void>;
-  createVault(passphrase: string, settings: Partial<Settings>): Promise<void>;
+  /** Pass null for a vault without a passphrase. */
+  createVault(passphrase: string | null, settings: Partial<Settings>): Promise<void>;
   unlock(passphrase: string): Promise<boolean>;
   lock(): void;
   changePassphrase(current: string, next: string): Promise<boolean>;
-  exportBackup(): Promise<string>;
+  /** Adds a passphrase to a vault that has none. */
+  setPassphrase(next: string): Promise<void>;
+  /** Removes the passphrase; the vault then opens without one on this device. */
+  removePassphrase(current: string): Promise<boolean>;
+  /** Without a vault passphrase, `backupPassphrase` encrypts the backup file. */
+  exportBackup(backupPassphrase?: string): Promise<string>;
   importBackup(json: string, passphrase: string): Promise<void>;
   wipe(): Promise<void>;
 
@@ -73,6 +90,12 @@ function persist(vault: Vault): Promise<void> {
   return writeQueue;
 }
 
+/** The stored vault envelope, if it is passphrase-protected. */
+async function storedPassphraseEnvelope(): Promise<PassphraseEnvelope | null> {
+  const env = parseEnvelope(await vaultStore.load());
+  return env?.kdf === 'PBKDF2-SHA256' ? env : null;
+}
+
 const unlockDelayMs = (failures: number) => (failures < 3 ? 0 : Math.min(30_000, 1000 * 2 ** (failures - 3)));
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -88,30 +111,58 @@ export const useStore = create<State & Actions>()((set, get) => {
 
   return {
     status: 'loading',
+    protection: null,
     vault: null,
     failedAttempts: 0,
 
     async init() {
       const stored = await vaultStore.load();
-      set({ status: stored ? 'locked' : 'new' });
+      if (!stored) return set({ status: 'new', protection: null });
+      const env = parseEnvelope(stored);
+      if (env?.kdf !== 'DEVICE-KEY') return set({ status: 'locked', protection: 'passphrase' });
+
+      // No passphrase: open straight away with the key stored on this device.
+      // A missing or wrong key leaves the vault locked (never 'new', which would overwrite it).
+      const key = await vaultStore.loadDeviceKey();
+      if (!key) return set({ status: 'locked', protection: 'device' });
+      const vk: VaultKey = { kind: 'device', key };
+      let vault: Vault;
+      try {
+        vault = parseVault(await decryptJSON(vk, env));
+      } catch {
+        return set({ status: 'locked', protection: 'device' });
+      }
+      vaultKey = vk;
+      set({ vault, status: 'unlocked', protection: 'device', failedAttempts: 0 });
     },
 
     async createVault(passphrase, settings) {
-      vaultKey = await newVaultKey(passphrase);
+      if (passphrase === null) {
+        const vk = await newDeviceKey();
+        await vaultStore.saveDeviceKey(vk.key);
+        vaultKey = vk;
+      } else {
+        vaultKey = await newVaultKey(passphrase);
+      }
       const vault = emptyVault(settings);
       await persist(vault);
-      set({ vault, status: 'unlocked', failedAttempts: 0 });
+      set({
+        vault,
+        status: 'unlocked',
+        protection: passphrase === null ? 'device' : 'passphrase',
+        failedAttempts: 0,
+      });
     },
 
     async unlock(passphrase) {
       await sleep(unlockDelayMs(get().failedAttempts));
-      const env = parseEnvelope(await vaultStore.load());
+      const env = await storedPassphraseEnvelope();
       if (!env) throw new BackupError('Stored data is damaged or from an unknown version.');
       try {
         const { vk, data } = await openEnvelope(passphrase, env);
         const vault = parseVault(data);
         vaultKey = vk;
-        set({ vault, status: 'unlocked', failedAttempts: 0 });
+        set({ vault, status: 'unlocked', protection: 'passphrase', failedAttempts: 0 });
         return true;
       } catch (e) {
         if (!(e instanceof DecryptError)) throw e;
@@ -121,12 +172,13 @@ export const useStore = create<State & Actions>()((set, get) => {
     },
 
     lock() {
+      if (get().protection === 'device') return; // nothing to lock without a passphrase
       vaultKey = null;
       set({ vault: null, status: get().status === 'new' ? 'new' : 'locked' });
     },
 
     async changePassphrase(current, next) {
-      const env = parseEnvelope(await vaultStore.load());
+      const env = await storedPassphraseEnvelope();
       const vault = get().vault;
       if (!env || !vault) return false;
       try {
@@ -139,12 +191,44 @@ export const useStore = create<State & Actions>()((set, get) => {
       return true;
     },
 
-    async exportBackup() {
-      // The stored envelope is already encrypted with the user's passphrase.
+    async setPassphrase(next) {
+      const vault = get().vault;
+      if (!vault || get().protection !== 'device') throw new Error('A passphrase is already set.');
+      vaultKey = await newVaultKey(next);
+      await persist(vault);
+      // Only drop the device key once the passphrase-protected copy is saved.
+      await vaultStore.deleteDeviceKey();
+      set({ protection: 'passphrase', failedAttempts: 0 });
+    },
+
+    async removePassphrase(current) {
+      const env = await storedPassphraseEnvelope();
+      const vault = get().vault;
+      if (!env || !vault) return false;
+      try {
+        await openEnvelope(current, env);
+      } catch {
+        return false;
+      }
+      const vk = await newDeviceKey();
+      // Store the key before the vault that needs it, so a failure never strands data.
+      await vaultStore.saveDeviceKey(vk.key);
+      vaultKey = vk;
+      await persist(vault);
+      set({ protection: 'device', failedAttempts: 0 });
+      return true;
+    },
+
+    async exportBackup(backupPassphrase) {
       await writeQueue;
-      const env = parseEnvelope(await vaultStore.load());
-      if (!env) throw new Error('Nothing to back up yet.');
-      return JSON.stringify(env);
+      // A passphrase vault is stored already encrypted with the user's passphrase.
+      const env = await storedPassphraseEnvelope();
+      if (env) return JSON.stringify(env);
+      // A device key can't leave this device, so encrypt the file with its own passphrase.
+      const vault = get().vault;
+      if (!vault) throw new Error('Nothing to back up yet.');
+      if (!backupPassphrase) throw new BackupError('Choose a passphrase for the backup file.');
+      return JSON.stringify(await encryptJSON(await newVaultKey(backupPassphrase), vault));
     },
 
     async importBackup(json, passphrase) {
@@ -154,7 +238,7 @@ export const useStore = create<State & Actions>()((set, get) => {
       } catch {
         throw new BackupError('That file is not a Budget Bill backup.');
       }
-      const env = parseEnvelope(raw);
+      const env = parseBackupEnvelope(raw);
       if (!env) throw new BackupError('That file is not a Budget Bill backup.');
       let opened: { vk: VaultKey; data: unknown };
       try {
@@ -163,17 +247,25 @@ export const useStore = create<State & Actions>()((set, get) => {
         throw new BackupError('Wrong passphrase for this backup, or the file is damaged.');
       }
       const vault = parseVault(opened.data);
-      // Adopt the backup's passphrase: it becomes this device's vault passphrase.
-      vaultKey = opened.vk;
+      // Restoring into a vault without a passphrase keeps it that way; otherwise
+      // the backup's passphrase becomes this device's vault passphrase.
+      const keepDevice = get().status === 'unlocked' && get().protection === 'device';
+      if (!keepDevice) vaultKey = opened.vk;
       await persist(vault);
-      set({ vault, status: 'unlocked', failedAttempts: 0 });
+      if (!keepDevice) await vaultStore.deleteDeviceKey();
+      set({
+        vault,
+        status: 'unlocked',
+        protection: keepDevice ? 'device' : 'passphrase',
+        failedAttempts: 0,
+      });
     },
 
     async wipe() {
       vaultKey = null;
       await writeQueue.catch(() => undefined);
       await vaultStore.wipe();
-      set({ vault: null, status: 'new', failedAttempts: 0 });
+      set({ vault: null, status: 'new', protection: null, failedAttempts: 0 });
     },
 
     saveBill: (bill) =>

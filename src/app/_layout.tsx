@@ -39,7 +39,8 @@ function Gate() {
   const init = useStore((s) => s.init);
   const autoLockMinutes = useStore((s) => s.vault?.settings.autoLockMinutes);
   const theme = useTheme();
-  useAutoLock(status === 'unlocked' ? autoLockMinutes : undefined);
+  const protection = useStore((s) => s.protection);
+  useAutoLock(status === 'unlocked' && protection === 'passphrase' ? autoLockMinutes : undefined);
 
   useEffect(() => {
     init().catch(() => useStore.setState({ status: 'new' }));

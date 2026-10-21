@@ -42,8 +42,8 @@ export function Onboarding() {
       <View style={styles.header}>
         <ThemedText type="subtitle">Budget Bill</ThemedText>
         <ThemedText themeColor="textSecondary">
-          Track upcoming bills and see what is left to spend. Your data stays on this device,
-          encrypted with a passphrase only you know.
+          Track upcoming bills and see what is left to spend. Your data stays on this device and
+          is never sent anywhere.
         </ThemedText>
       </View>
       {filesSupported && (
@@ -64,6 +64,7 @@ export function Onboarding() {
 function CreateVault() {
   const createVault = useStore((s) => s.createVault);
   const saveIncome = useStore((s) => s.saveIncome);
+  const [usePassphrase, setUsePassphrase] = useState(true);
   const [passphrase, setPassphrase] = useState('');
   const [confirm, setConfirm] = useState('');
   const [acknowledged, setAcknowledged] = useState(false);
@@ -75,7 +76,7 @@ function CreateVault() {
   const [submitted, setSubmitted] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const problem = passphraseProblem(passphrase, confirm);
+  const problem = usePassphrase ? passphraseProblem(passphrase, confirm) : null;
   const incomeCents = income.trim() ? parseMoneyToCents(income) : 0;
   const incomeError = incomeCents === null ? 'Enter an amount like 3200 or 3200.50' : null;
   const paydayError = incomeCents && !isoDate.safeParse(payday).success ? 'Choose a valid date.' : null;
@@ -85,7 +86,7 @@ function CreateVault() {
     if (problem || incomeError || paydayError || !acknowledged || incomeCents === null) return;
     setBusy(true);
     try {
-      await createVault(passphrase, { currency, incomeMode });
+      await createVault(usePassphrase ? passphrase : null, { currency, incomeMode });
       if (incomeCents > 0) {
         await saveIncome({
           id: newId(),
@@ -103,27 +104,48 @@ function CreateVault() {
   return (
     <>
       <Card>
-        <SectionTitle>1. Choose a passphrase</SectionTitle>
-        <Field
-          label="Passphrase"
-          value={passphrase}
-          onChangeText={setPassphrase}
-          error={submitted ? passphraseProblem(passphrase) : null}
-          {...secretInputProps}
+        <SectionTitle>1. Protect your data</SectionTitle>
+        <Segmented
+          options={[
+            { value: 'yes', label: 'Passphrase (recommended)' },
+            { value: 'no', label: 'No passphrase' },
+          ]}
+          value={usePassphrase ? 'yes' : 'no'}
+          onChange={(v) => {
+            setUsePassphrase(v === 'yes');
+            setAcknowledged(false);
+          }}
         />
-        <StrengthMeter passphrase={passphrase} />
-        <Field
-          label="Confirm passphrase"
-          value={confirm}
-          onChangeText={setConfirm}
-          error={submitted && confirm !== passphrase ? 'Passphrases do not match.' : null}
-          onSubmitEditing={submit}
-          {...secretInputProps}
-        />
-        <ThemedText type="small" themeColor="textSecondary">
-          There is no account and no password reset. If you forget this passphrase, your data
-          cannot be recovered by anyone, including us.
-        </ThemedText>
+        {usePassphrase ? (
+          <>
+            <Field
+              label="Passphrase"
+              value={passphrase}
+              onChangeText={setPassphrase}
+              error={submitted ? passphraseProblem(passphrase) : null}
+              {...secretInputProps}
+            />
+            <StrengthMeter passphrase={passphrase} />
+            <Field
+              label="Confirm passphrase"
+              value={confirm}
+              onChangeText={setConfirm}
+              error={submitted && confirm !== passphrase ? 'Passphrases do not match.' : null}
+              onSubmitEditing={submit}
+              {...secretInputProps}
+            />
+            <ThemedText type="small" themeColor="textSecondary">
+              There is no account and no password reset. If you forget this passphrase, your data
+              cannot be recovered by anyone, including us.
+            </ThemedText>
+          </>
+        ) : (
+          <ThemedText type="small" themeColor="textSecondary">
+            Budget Bill will open without asking for anything. Your data still stays only on this
+            device, but anyone who can use this browser can see it. You can add a passphrase
+            later in Settings.
+          </ThemedText>
+        )}
         <Row>
           <Chip
             label={acknowledged ? '✓ I understand' : 'I understand'}
@@ -133,7 +155,9 @@ function CreateVault() {
         </Row>
         {submitted && !acknowledged && (
           <ThemedText type="small" themeColor="negative">
-            Please confirm you understand the passphrase cannot be recovered.
+            {usePassphrase
+              ? 'Please confirm you understand the passphrase cannot be recovered.'
+              : 'Please confirm you understand anyone using this browser can see your data.'}
           </ThemedText>
         )}
       </Card>
@@ -185,7 +209,7 @@ function CreateVault() {
         </ThemedText>
       </Card>
 
-      <Button label="Create encrypted vault" onPress={submit} busy={busy} />
+      <Button label={usePassphrase ? 'Create encrypted vault' : 'Get started'} onPress={submit} busy={busy} />
     </>
   );
 }

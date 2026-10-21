@@ -2,7 +2,7 @@
 
 A private, offline-first tracker for recurring bills and subscriptions. See what's due this month or this year, what you've already paid, and **how much is left to spend** after bills.
 
-- 🔒 **Encrypted on your device.** AES-256-GCM with a key derived from your passphrase (PBKDF2-SHA256, 600k iterations).
+- 🔒 **Encrypted on your device.** AES-256-GCM with a key derived from your passphrase (PBKDF2-SHA256, 600k iterations). The passphrase is optional, but recommended.
 - 🚫 **No accounts, servers, analytics or trackers.** The page's Content-Security-Policy blocks all network requests.
 - 📋 **60+ common bills and services** to pick from, or add your own.
 - 💾 **Encrypted backup files** for moving between browsers and devices.
