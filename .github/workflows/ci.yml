@@ -24,7 +24,9 @@ jobs:
       - run: npm run lint
       - run: npm test -- --ci
       - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+        # Fails on high/critical advisories except reviewed, expiring exceptions
+        # listed in scripts/audit-exceptions.json.
+        run: node scripts/audit-check.mjs
       - run: npm run build:web
 
   codeql:

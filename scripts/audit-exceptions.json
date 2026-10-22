@@ -1,0 +1,19 @@
+{
+  "$comment": "High/critical advisories reviewed and temporarily accepted by scripts/audit-check.mjs. Each entry expires; after that date CI fails again until it is re-reviewed. Only add advisories that cannot reach the shipped web bundle and have no patched version.",
+  "exceptions": [
+    {
+      "id": "GHSA-vfj7-8cjw-p6xm",
+      "package": "braces",
+      "reason": "Build-time only (metro-file-map > micromatch > braces); not in the browser bundle. DoS needs attacker-controlled glob patterns, which the build never takes. No patched version published yet.",
+      "reviewed": "2026-10-21",
+      "expires": "2026-11-21"
+    },
+    {
+      "id": "GHSA-86w9-cpqp-85rv",
+      "package": "node-forge",
+      "reason": "Build-time only (@expo/cli > @expo/code-signing-certificates); not in the browser bundle. The app never verifies RSA signatures. No patched version published yet.",
+      "reviewed": "2026-10-21",
+      "expires": "2026-11-21"
+    }
+  ]
+}
