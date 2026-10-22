@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { CsvSection } from '@/components/csv-section';
 import { DateField } from '@/components/date-field';
+import { InstallSection } from '@/components/install-section';
 import { useMoney } from '@/components/money';
+import { RemindersSection } from '@/components/reminders-section';
 import { StrengthMeter } from '@/components/strength-meter';
 import { ThemedText } from '@/components/themed-text';
 import {
@@ -41,7 +44,10 @@ export default function Settings() {
       <IncomeSection />
       <PreferencesSection />
       <PassphraseSection />
+      <RemindersSection />
       {filesSupported && <BackupSection />}
+      {filesSupported && <CsvSection />}
+      <InstallSection />
       <PrivacySection />
       <DangerSection />
     </Screen>

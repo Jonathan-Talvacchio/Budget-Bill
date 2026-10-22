@@ -43,7 +43,7 @@ Docs: https://docs.expo.dev/eas/index.md
 ## Budget Bill project rules
 
 - Design doc: `docs/DESIGN.md`. Update it when behaviour, data model or security posture changes.
-- Security and privacy come first. Never add analytics, remote fonts or images, CDNs, or any runtime network call. The exported CSP sets `connect-src 'none'`.
+- Security and privacy come first. Never add analytics, remote fonts or images, CDNs, or any runtime network call. The exported CSP sets `connect-src 'none'`; `worker-src 'self'` exists only for the offline service worker (scripts/sw-template.js), which must only cache the site's own files.
 - Money is integer cents; dates are `YYYY-MM-DD` strings. Recurrence math lives only in `src/domain/billing.ts` and must stay unit-tested.
 - All persisted or imported data goes through the zod schemas in `src/domain/schema.ts`. Plaintext must never reach `src/storage/`.
 - Web is deployed to GitHub Pages under `/Budget-Bill` (`experiments.baseUrl`). No dynamic route segments: use query params (e.g. `/bill/edit?id=`).

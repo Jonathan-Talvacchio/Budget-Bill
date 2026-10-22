@@ -2,9 +2,12 @@ import { useState } from 'react';
 import { StyleSheet } from 'react-native';
 
 import { DateField } from '@/components/date-field';
+import { useMoney } from '@/components/money';
 import { ThemedText } from '@/components/themed-text';
 import { Button, Card, Chip, Field, Row, SectionTitle, Segmented } from '@/components/ui';
 import { todayISO } from '@/domain/billing';
+import { formatDueDate } from '@/domain/format';
+import { priceChanges } from '@/domain/insights';
 import { centsToInput, parseMoneyToCents } from '@/domain/money';
 import {
   CATEGORIES,
@@ -38,6 +41,8 @@ const FREQUENCY_OPTIONS = FREQUENCIES.map((f) => ({ value: f, label: FREQUENCY_L
 export function BillForm({ bill, defaults, onDone }: Props) {
   const saveBill = useStore((s) => s.saveBill);
   const deleteBill = useStore((s) => s.deleteBill);
+  const format = useMoney();
+  const history = bill ? priceChanges(bill).reverse() : [];
   const start = bill ?? defaults;
 
   const [name, setName] = useState(start?.name ?? '');
@@ -147,6 +152,19 @@ export function BillForm({ bill, defaults, onDone }: Props) {
           <DateField label="Last payment date" value={endDate} onChange={setEndDate} error={show(errors.endDate)} />
         )}
       </Card>
+
+      {history.length > 0 && (
+        <>
+          <SectionTitle>Price history</SectionTitle>
+          <Card>
+            {history.map((c) => (
+              <ThemedText key={c.date} type="small" themeColor="textSecondary">
+                {formatDueDate(c.date, true)}: {format(c.fromCents)} → {format(c.toCents)}
+              </ThemedText>
+            ))}
+          </Card>
+        </>
+      )}
 
       <SectionTitle>Category</SectionTitle>
       <Row style={styles.wrap}>

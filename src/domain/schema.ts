@@ -29,6 +29,10 @@ export const CURRENCIES = ['USD', 'CAD', 'EUR', 'GBP', 'AUD', 'NZD', 'CHF', 'MXN
 export type Currency = (typeof CURRENCIES)[number];
 
 export const AUTO_LOCK_OPTIONS = [1, 5, 15, 30] as const;
+export const REMINDER_DAY_OPTIONS = [0, 1, 3, 7] as const;
+
+/** Categories treated as subscriptions in the subscription audit. */
+export const SUBSCRIPTION_CATEGORIES = ['streaming', 'music-audio', 'software-cloud', 'memberships'] as const;
 
 /**
  * How income is counted in a month/year:
@@ -57,6 +61,8 @@ export const billSchema = z.object({
   anchorDate: isoDate,
   endDate: isoDate.optional(),
   notes: text(500).optional(),
+  /** Earlier prices, oldest first: each was the price until (not including) `until`. */
+  priceHistory: z.array(z.object({ amountCents: cents, until: isoDate })).max(100).optional(),
   createdAt: z.string().max(40),
   updatedAt: z.string().max(40),
 });
@@ -86,6 +92,15 @@ export const settingsSchema = z.object({
   autoLockMinutes: z.number().int().min(1).max(60),
   // Defaulted so vaults and backups saved before this setting existed still load.
   incomeMode: z.enum(INCOME_MODES).default('spread'),
+  reminders: z
+    .object({
+      enabled: z.boolean(),
+      /** Remind about bills due within this many days (0 = due today). */
+      daysBefore: z.number().int().min(0).max(30),
+      /** Include bill names and amounts in notifications (visible on lock screens). */
+      showDetails: z.boolean(),
+    })
+    .default({ enabled: false, daysBefore: 3, showDetails: false }),
 });
 export type Settings = z.infer<typeof settingsSchema>;
 
@@ -94,6 +109,8 @@ export const vaultSchema = z.object({
   bills: z.array(billSchema).max(2000),
   payments: z.array(paymentSchema).max(50000),
   incomes: z.array(incomeSchema).max(100),
+  /** Bill occurrences already reminded about (paymentKey format), so each is notified once. */
+  reminderLog: z.array(z.string().max(120)).max(2000).default([]),
   settings: settingsSchema,
 });
 export type Vault = z.infer<typeof vaultSchema>;
@@ -104,7 +121,14 @@ export function emptyVault(settings?: Partial<Settings>): Vault {
     bills: [],
     payments: [],
     incomes: [],
-    settings: { currency: 'USD', autoLockMinutes: 5, incomeMode: 'spread', ...settings },
+    reminderLog: [],
+    settings: {
+      currency: 'USD',
+      autoLockMinutes: 5,
+      incomeMode: 'spread',
+      reminders: { enabled: false, daysBefore: 3, showDetails: false },
+      ...settings,
+    },
   };
 }
 

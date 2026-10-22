@@ -50,7 +50,10 @@ Users add bills from a **catalog of common services** or as **custom** entries. 
 | U10 | have the app lock itself when I walk away | ✅ |
 | U11 | back up my data and move it to another device | ✅ (encrypted file) |
 | U12 | erase everything on this device | ✅ |
-| U13 | get reminders before bills are due | Roadmap (mobile) |
+| U13 | get reminders before bills are due | ✅ web, while the app is open (§7.9); closed-app reminders with mobile |
+| U14 | install the app to my home screen and use it offline | ✅ (§7.8) |
+| U15 | see spending by category, a subscription check and price changes | ✅ Insights |
+| U16 | export my bills and payments to a spreadsheet, and import bills from one | ✅ CSV (§7.10) |
 
 ## 4. Screens
 
@@ -60,9 +63,10 @@ Users add bills from a **catalog of common services** or as **custom** entries. 
 | *(gate)* Unlock | Enter the passphrase. Failed attempts add a growing delay. There is also an "erase and start over" option. |
 | `/` Overview | Month/Year toggle and ‹ › period navigation. **Left to spend** hero card. Cards for Total bills, Paid, Still due and Income. Month view: a list of occurrences with a paid checkbox and an overdue flag. Year view: month-by-month totals. |
 | `/bills` | Every bill sorted by next due date, category filter chips, and average-per-month and per-year totals. |
+| `/insights` | **Spending by category** (average per month, ranked bars with values and percentages, one hue, no legend since it's one series), **Subscription check** (streaming, music, software and memberships by yearly cost, with the yearly total), **Price changes** over the last 12 months. |
 | `/bill/new` | Searchable catalog grouped by category, plus **Custom bill**, which leads to the bill form. |
 | `/bill/edit?id=` | Edit or delete a bill. Uses a query parameter, not a dynamic `[id]` segment, so the static export needs a single HTML page. |
-| `/settings` | Income sources (add, edit, remove), currency, auto-lock timeout, change passphrase, export/import backup, privacy statement, erase all data. |
+| `/settings` | Income sources (add, edit, remove), currency, auto-lock timeout, passphrase (set, change or remove), bill reminders, encrypted backup export/import, CSV export/import, install app, privacy statement, erase all data. |
 
 The onboarding and unlock screens are rendered **by the root layout instead of the router**. No route and no data can render until the vault is decrypted, and a deep link such as `/settings` still opens after unlocking.
 
@@ -71,11 +75,12 @@ The onboarding and unlock screens are rendered **by the root layout instead of t
 All data lives in one **vault** object. It is validated with zod (`src/domain/schema.ts`) every time it is loaded or imported.
 
 ```ts
-Vault    { version: 1, bills: Bill[], payments: Payment[], incomes: Income[], settings: Settings }
-Bill     { id, name, catalogId?, category, amountCents, frequency, anchorDate, endDate?, notes?, createdAt, updatedAt }
+Vault    { version: 1, bills: Bill[], payments: Payment[], incomes: Income[], settings: Settings, reminderLog: string[] }
+Bill     { id, name, catalogId?, category, amountCents, frequency, anchorDate, endDate?, notes?, priceHistory?, createdAt, updatedAt }
+priceHistory: { amountCents, until }[]   // earlier prices, oldest first; recorded when an amount is edited
 Payment  { billId, dueDate, paidAt, amountCents }     // settles one occurrence
 Income   { id, label, amountCents, frequency, anchorDate? }   // anchorDate = a payday
-Settings { currency, autoLockMinutes, incomeMode: 'spread' | 'paydays' }
+Settings { currency, autoLockMinutes, incomeMode: 'spread' | 'paydays', reminders: { enabled, daysBefore, showDetails } }
 frequency ∈ weekly | monthly | quarterly | yearly
 ```
 
@@ -83,6 +88,8 @@ frequency ∈ weekly | monthly | quarterly | yearly
 - **Dates are `YYYY-MM-DD` strings**, compared as strings and calculated on calendar fields. Results never depend on the time zone or daylight saving time.
 - A payment records the amount actually paid. If a bill's price changes later, past periods still show what was paid.
 - The schema caps array lengths and string sizes, so a malicious backup file cannot exhaust memory.
+- Every field added after v1 is optional or has a schema default (`incomeMode`, `reminders`, `reminderLog`, `priceHistory`), so older vaults and backups load unchanged.
+- **Price history:** editing a bill's amount records the old price as ending today (`withPriceChange` in `src/domain/insights.ts`). Several edits on the same day count as one change, and editing back to the original price that day removes it.
 
 ## 6. Calculation rules (`src/domain/billing.ts`)
 
@@ -191,7 +198,7 @@ Pages cannot set HTTP headers, so `scripts/postexport-pages.mjs` adds a `<meta h
 ```
 default-src 'none'; script-src 'self' 'sha256-…'; style-src 'self' 'unsafe-inline';
 img-src 'self' data: blob:; font-src 'self'; manifest-src 'self'; connect-src 'none';
-worker-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'
+worker-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'
 ```
 
 `style-src 'unsafe-inline'` is needed because react-native-web injects its styles at runtime. Inline styles cannot run code.
@@ -210,18 +217,46 @@ github.io is already on the HSTS preload list, so HTTPS is enforced today.
 - Data is stored only on the device and always encrypted. Only a passphrase keeps it private from others who use the same browser. **Erase all data** clears IndexedDB and local/session storage.
 - The source code is public so anyone can audit these claims.
 
+### 7.8 Installable app and offline use (PWA)
+- The build generates `manifest.webmanifest` (standalone display, icon, scope `/Budget-Bill/`) and `sw.js`, a service worker made from `scripts/sw-template.js`.
+- **What the service worker caches:** only the app's own exported files. All 36 are precached at install, and the cache name is a hash of their contents, so each deploy gets a fresh cache and old ones are deleted. It never caches or reads user data, which stays encrypted in IndexedDB.
+- **Requests:**
+  - Pages are network-first, with the cached copy used when offline. Pretty URLs map to their `.html` files, query strings included.
+  - Static files have content-hashed names, so they are cache-first.
+  - Requests to other origins are ignored.
+- **CSP:** `worker-src 'self'` allows only this same-origin worker. `connect-src` stays `'none'`: pages still cannot make network requests. The service worker fetches only the site's own files.
+- **Install:** Settings → Install app uses the browser's install prompt (Chrome, Edge, Android) or shows the Safari "Add to Home Screen" steps.
+
+### 7.9 Bill reminders (web)
+- Off by default. Turning them on asks for notification permission. The user picks a window (same day, 1, 3 or 7 days before), and each unpaid occurrence is notified **once**, tracked in `vault.reminderLog`, which is pruned after 60 days.
+- **Privacy:** by default a notification says only how many bills are due ("2 bills due in the next 3 days"), so nothing private shows on a lock screen. Names, amounts and dates appear only if the user turns on "Show bill names and amounts".
+- Notifications are created on the device through the service worker. Nothing is sent to a server.
+- **Limit:** without a push server, which this design deliberately doesn't have, the web app checks only while it is open: on start, every 30 minutes and on return to the foreground. Background push would need a server that knows when a user's bills are due, which conflicts with the privacy model. Reminders that work while the app is closed come with the mobile apps, via local `expo-notifications` scheduling (§9).
+
+### 7.10 CSV export and import
+- **Export** (bills, and payment history) is the one place data leaves the app **unencrypted**. Each export asks for confirmation with a plain warning.
+- **Formula injection is neutralised:** cells starting with `= + - @`, tab or carriage return get a leading apostrophe, so a bill named `=HYPERLINK(…)` can't run as a formula in Excel or Sheets.
+- **Import** accepts Budget Bill's own export or a simple spreadsheet:
+  - "Name" and "Amount" headers are required. Common aliases such as "Service", "Price" and "Billing cycle" are recognised.
+  - Dates can be YYYY-MM-DD or MM/DD/YYYY. Category is guessed from the catalog when missing.
+  - Every row goes through the bill schema.
+  - Rows that can't be read are listed with their row number, never guessed. Duplicates (same name, amount and frequency) are skipped.
+  - Nothing is added until the user confirms the preview.
+  - Limits: 2,000 rows and 20 MB.
+
 ## 8. Architecture
 
 ```
 src/
   app/            Expo Router routes (screens); _layout.tsx holds the lock gate
   components/     UI kit (ui.tsx), bill form, onboarding, unlock, date field (.web.tsx variant)
-  domain/         schema (zod), billing math, money, catalog, formatting — no dependencies on React
+  domain/         schema (zod), billing math, money, catalog, insights, reminders, CSV, formatting — no dependencies on React
   security/       WebCrypto vault, passphrase rules, auto-lock hook
   storage/        VaultStore interface; index.web.ts = IndexedDB (idb-keyval); index.ts = native placeholder
   state/          zustand store: status (loading/new/locked/unlocked), vault, actions
-  platform/       dialogs, file save/pick, navigation helpers (web and native variants)
-scripts/          postexport-pages.mjs (CSP, 404, .nojekyll), serve-pages.mjs (local Pages preview)
+  platform/       dialogs, file save/pick, navigation, PWA (service worker, install, notifications) — web and native variants
+scripts/          postexport-pages.mjs (CSP, manifest, sw.js, 404, .nojekyll), sw-template.js, serve-pages.mjs (local Pages preview),
+                  audit-check.mjs + audit-exceptions.json (CI dependency gate)
 ```
 
 - **Data flow:**
@@ -234,7 +269,7 @@ scripts/          postexport-pages.mjs (CSP, 404, .nojekyll), serve-pages.mjs (l
 ## 9. Platform strategy and hosting
 
 ### Phase 1 — Web on GitHub Pages (current)
-- `expo export -p web` builds a static site under the `/Budget-Bill` base URL. `postexport-pages.mjs` then adds the CSP, `404.html` and `.nojekyll`.
+- `expo export -p web` builds a static site under the `/Budget-Bill` base URL. `postexport-pages.mjs` then adds the CSP, the web app manifest and service worker, `404.html` and `.nojekyll`.
 - GitHub Actions deploys on every push to `main`.
 - **Free Pages requires a public repository.** That's acceptable: the repository contains no user data, and open source supports the privacy claims.
 
@@ -275,7 +310,7 @@ Custom domains and preview deploys also come with the move. Optional **end-to-en
 
 | Milestone | Items |
 |---|---|
-| **v0.2 web polish** | PWA manifest and offline service worker (with a matching `worker-src`), CSV export (a plaintext export with a clear warning), bill search, "upcoming in the next 7 days" list, per-category totals chart |
+| **v0.2 web polish** | ✅ Installable app and offline service worker, ✅ CSV export/import, ✅ Insights (category chart, subscription check, price history), ✅ reminders while open. Still to do: bill search, "upcoming in the next 7 days" list, carry overdue bills forward, editable paid amounts, variable bills |
 | **v0.3 mobile** | Native storage and crypto adapters, biometric unlock, local reminders, EAS builds for Android and iOS |
 | **v0.4 hardening** | Argon2id KDF migration, SRI hashes for bundles, reproducible builds with published hashes, external security review |
 | **Later** | Optional E2EE sync and household sharing, more currencies (including ones without 2 decimal places), price-change history |

@@ -7,8 +7,10 @@ import { Unlock } from '@/components/unlock';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
+import { registerServiceWorker } from '@/platform/pwa';
 import { useAutoLock } from '@/security/use-auto-lock';
 import { useStore } from '@/state/store';
+import { useReminders } from '@/state/use-reminders';
 
 export default function RootLayout() {
   const scheme = useColorScheme();
@@ -41,8 +43,10 @@ function Gate() {
   const theme = useTheme();
   const protection = useStore((s) => s.protection);
   useAutoLock(status === 'unlocked' && protection === 'passphrase' ? autoLockMinutes : undefined);
+  useReminders(status === 'unlocked');
 
   useEffect(() => {
+    registerServiceWorker();
     init().catch(() => useStore.setState({ status: 'new' }));
   }, [init]);
 

@@ -5,7 +5,9 @@ A private, offline-first tracker for recurring bills and subscriptions. See what
 - 🔒 **Encrypted on your device.** AES-256-GCM with a key derived from your passphrase (PBKDF2-SHA256, 600k iterations). The passphrase is optional, but recommended.
 - 🚫 **No accounts, servers, analytics or trackers.** The page's Content-Security-Policy blocks all network requests.
 - 📋 **60+ common bills and services** to pick from, or add your own.
-- 💾 **Encrypted backup files** for moving between browsers and devices.
+- 💾 **Encrypted backup files** for moving between browsers and devices, plus CSV export/import for spreadsheets.
+- 📊 **Insights:** spending by category, a subscription check, and price-change history.
+- 📲 **Installable and offline:** add it to your home screen; it works without a connection. Optional bill reminders.
 
 Web first (GitHub Pages). Android and iOS come from the same Expo codebase later. Read the full [design document](docs/DESIGN.md) and the [security policy](SECURITY.md).
 

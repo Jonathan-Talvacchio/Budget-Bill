@@ -9,7 +9,9 @@
  */
 import { create } from 'zustand';
 
-import { paymentKey } from '@/domain/billing';
+import { paymentKey, todayISO } from '@/domain/billing';
+import { withPriceChange } from '@/domain/insights';
+import { updateReminderLog } from '@/domain/reminders';
 import {
   emptyVault,
   vaultSchema,
@@ -61,6 +63,10 @@ type Actions = {
   wipe(): Promise<void>;
 
   saveBill(bill: Bill): Promise<void>;
+  /** Adds several new bills at once (CSV import). */
+  importBills(bills: Bill[]): Promise<void>;
+  /** Records bill occurrences that have been reminded about. */
+  markReminded(keys: string[]): Promise<void>;
   deleteBill(id: string): Promise<void>;
   togglePaid(bill: Bill, dueDate: string): Promise<void>;
   saveIncome(income: Income): Promise<void>;
@@ -270,12 +276,18 @@ export const useStore = create<State & Actions>()((set, get) => {
 
     saveBill: (bill) =>
       update((v) => {
-        const exists = v.bills.some((b) => b.id === bill.id);
+        const prev = v.bills.find((b) => b.id === bill.id);
+        const next = withPriceChange(prev, bill, todayISO());
         return {
           ...v,
-          bills: exists ? v.bills.map((b) => (b.id === bill.id ? bill : b)) : [...v.bills, bill],
+          bills: prev ? v.bills.map((b) => (b.id === bill.id ? next : b)) : [...v.bills, next],
         };
       }),
+
+    importBills: (bills) => update((v) => ({ ...v, bills: [...v.bills, ...bills].slice(0, 2000) })),
+
+    markReminded: (keys) =>
+      update((v) => ({ ...v, reminderLog: updateReminderLog(v.reminderLog, keys, todayISO()) })),
 
     deleteBill: (id) =>
       update((v) => ({

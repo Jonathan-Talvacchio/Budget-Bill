@@ -28,7 +28,7 @@ export function todayISO(now = new Date()): string {
   return toISODate({ y: now.getFullYear(), m: now.getMonth() + 1, d: now.getDate() });
 }
 
-function addDays(iso: string, days: number): string {
+export function addDays(iso: string, days: number): string {
   const { y, m, d } = parseISODate(iso);
   const t = new Date(Date.UTC(y, m - 1, d + days));
   return toISODate({ y: t.getUTCFullYear(), m: t.getUTCMonth() + 1, d: t.getUTCDate() });
@@ -133,6 +133,11 @@ export function incomeForPeriod(incomes: Income[], period: Period, mode: IncomeM
     const yearly = i.amountCents * PER_YEAR[i.frequency];
     return sum + (period.kind === 'year' ? yearly : Math.round(yearly / 12));
   }, 0);
+}
+
+/** Total cost of a bill over a year, e.g. $15.99/mo -> $191.88. */
+export function yearlyCost(bill: Pick<Bill, 'amountCents' | 'frequency'>): number {
+  return bill.amountCents * PER_YEAR[bill.frequency];
 }
 
 /** Average monthly cost of a bill, e.g. a $120/yr bill -> $10/mo. */
