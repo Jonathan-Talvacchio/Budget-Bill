@@ -21,6 +21,8 @@ const TYPES = {
 function resolve(pathname) {
   const rel = normalize(decodeURIComponent(pathname)).replace(/^[/\\]+/, '');
   if (rel.startsWith('..')) return null;
+  // Like GitHub Pages, don't serve dotfiles (e.g. _expo/.routes.json).
+  if (rel.split(/[/\\]/).some((seg) => seg.startsWith('.'))) return null;
   for (const candidate of [rel, `${rel}.html`, join(rel, 'index.html')]) {
     const p = join(ROOT, candidate);
     if (existsSync(p) && statSync(p).isFile()) return p;

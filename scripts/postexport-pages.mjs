@@ -106,7 +106,9 @@ writeFileSync(join(DIST, '.nojekyll'), '');
 // ---- offline service worker: precache every exported file, versioned by content
 const precache = files(DIST)
   .map((f) => relative(DIST, f).split(sep).join('/'))
-  .filter((p) => p !== 'sw.js' && p !== '.nojekyll')
+  // GitHub Pages doesn't serve dotfiles (e.g. _expo/.routes.json), and one failed
+  // download would stop the service worker installing, so leave them out.
+  .filter((p) => p !== 'sw.js' && !p.split('/').some((seg) => seg.startsWith('.')))
   .sort();
 const version = createHash('sha256');
 for (const p of precache) version.update(p).update(readFileSync(join(DIST, p)));
