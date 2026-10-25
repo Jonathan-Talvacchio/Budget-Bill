@@ -2,6 +2,8 @@
 // Fails on any high/critical advisory unless it is listed in
 // scripts/audit-exceptions.json with an expiry date that hasn't passed yet.
 // Expired exceptions fail too, so every accepted risk is re-reviewed.
+// An exception with `paths` covers only those install locations: if the
+// advisory also affects a copy anywhere else (e.g. one the app ships), it fails.
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
@@ -25,7 +27,10 @@ for (const vuln of Object.values(report.vulnerabilities ?? {})) {
   for (const via of vuln.via) {
     if (typeof via !== 'object' || !BLOCKING.has(via.severity)) continue;
     const id = via.url?.split('/').pop() ?? String(via.source);
-    advisories.set(id, { id, severity: via.severity, pkg: via.name, title: via.title, url: via.url });
+    const a = advisories.get(id) ?? { id, severity: via.severity, pkg: via.name, title: via.title, url: via.url, nodes: new Set() };
+    // Only the affected package's own entry lists where the vulnerable copies are installed.
+    if (vuln.name === via.name) for (const n of vuln.nodes ?? []) a.nodes.add(n);
+    advisories.set(id, a);
   }
 }
 
@@ -34,7 +39,10 @@ for (const a of advisories.values()) {
   const ex = accepted.get(a.id);
   if (!ex) failures.push(`${a.severity.toUpperCase()} ${a.pkg}: ${a.title} (${a.url})`);
   else if (ex.expires < today) failures.push(`EXPIRED exception for ${a.id} (${a.pkg}, expired ${ex.expires}): re-review it`);
-  else console.log(`accepted until ${ex.expires}: ${a.id} ${a.pkg} — ${ex.reason}`);
+  else if (ex.paths && [...a.nodes].some((n) => !ex.paths.includes(n))) {
+    const extra = [...a.nodes].filter((n) => !ex.paths.includes(n));
+    failures.push(`${a.severity.toUpperCase()} ${a.pkg}: ${a.title} also affects ${extra.join(', ')}, which the exception for ${a.id} doesn't cover (${a.url})`);
+  } else console.log(`accepted until ${ex.expires}: ${a.id} ${a.pkg}${ex.paths ? ` at ${ex.paths.join(', ')}` : ''} — ${ex.reason}`);
 }
 for (const id of accepted.keys()) {
   if (!advisories.has(id)) console.log(`note: exception ${id} no longer needed; remove it from audit-exceptions.json`);
