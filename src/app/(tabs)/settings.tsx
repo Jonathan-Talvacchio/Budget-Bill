@@ -6,6 +6,7 @@ import { DateField } from '@/components/date-field';
 import { InstallSection } from '@/components/install-section';
 import { useMoney } from '@/components/money';
 import { RemindersSection } from '@/components/reminders-section';
+import { StorageSection } from '@/components/storage-section';
 import { StrengthMeter } from '@/components/strength-meter';
 import { ThemedText } from '@/components/themed-text';
 import {
@@ -47,6 +48,7 @@ export default function Settings() {
       <RemindersSection />
       {filesSupported && <BackupSection />}
       {filesSupported && <CsvSection />}
+      <StorageSection />
       <InstallSection />
       <PrivacySection />
       <DangerSection />

@@ -27,3 +27,14 @@ export async function requestNotificationPermission(): Promise<Permission> {
 export async function showNotification(_title: string, _body: string, _tag: string): Promise<boolean> {
   return false;
 }
+
+export type StorageProtection = 'persisted' | 'not-persisted' | 'unsupported';
+
+/** Native app storage isn't cleared under storage pressure the way browser storage can be. */
+export async function storageProtection(): Promise<StorageProtection> {
+  return 'unsupported';
+}
+
+export async function requestPersistentStorage(): Promise<StorageProtection> {
+  return 'unsupported';
+}

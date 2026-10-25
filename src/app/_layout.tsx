@@ -7,7 +7,7 @@ import { Unlock } from '@/components/unlock';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
-import { registerServiceWorker } from '@/platform/pwa';
+import { registerServiceWorker, requestPersistentStorage } from '@/platform/pwa';
 import { useAutoLock } from '@/security/use-auto-lock';
 import { useStore } from '@/state/store';
 import { useReminders } from '@/state/use-reminders';
@@ -44,6 +44,11 @@ function Gate() {
   const protection = useStore((s) => s.protection);
   useAutoLock(status === 'unlocked' && protection === 'passphrase' ? autoLockMinutes : undefined);
   useReminders(status === 'unlocked');
+
+  // Once there is data worth keeping, ask the browser not to clear it under storage pressure.
+  useEffect(() => {
+    if (status === 'unlocked') requestPersistentStorage().catch(() => undefined);
+  }, [status]);
 
   useEffect(() => {
     registerServiceWorker();

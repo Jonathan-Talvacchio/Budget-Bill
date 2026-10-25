@@ -234,6 +234,7 @@ github.io is already on the HSTS preload list, so HTTPS is enforced today.
   - Requests to other origins are ignored.
 - **CSP:** `worker-src 'self'` allows only this same-origin worker. `connect-src` stays `'none'`: pages still cannot make network requests. The service worker fetches only the site's own files.
 - **Install:** Settings → Install app uses the browser's install prompt (Chrome, Edge, Android) or shows the Safari "Add to Home Screen" steps.
+- **Persistent storage:** browsers may clear a site's IndexedDB on their own under storage pressure. Once a vault is open, the app calls `navigator.storage.persist()` to ask the browser to keep it. Chrome, Edge and Safari decide silently and usually agree for installed or regularly used apps; Firefox may prompt. Settings → "Storage on this device" shows the result and can ask again. This doesn't protect against the user clearing site data, so backups remain the safety net.
 
 ### 7.9 Bill reminders (web)
 - Off by default. Turning them on asks for notification permission. Bills on auto pay are never reminded about. The user picks a window (same day, 1, 3 or 7 days before), and each unpaid occurrence is notified **once**, tracked in `vault.reminderLog`, which is pruned after 60 days.

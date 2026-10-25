@@ -98,3 +98,27 @@ export async function showNotification(title: string, body: string, tag: string)
     return false;
   }
 }
+
+// ---- persistent storage
+
+export type StorageProtection = 'persisted' | 'not-persisted' | 'unsupported';
+
+/** Whether the browser has agreed not to clear this site's data under storage pressure. */
+export async function storageProtection(): Promise<StorageProtection> {
+  if (!navigator.storage?.persisted) return 'unsupported';
+  return (await navigator.storage.persisted()) ? 'persisted' : 'not-persisted';
+}
+
+/**
+ * Asks the browser to keep this site's data (the encrypted vault) instead of
+ * clearing it automatically when space runs low. Chrome, Edge and Safari decide
+ * silently (installed apps are usually granted); Firefox may ask the user.
+ */
+export async function requestPersistentStorage(): Promise<StorageProtection> {
+  if (!navigator.storage?.persist) return 'unsupported';
+  try {
+    return (await navigator.storage.persist()) ? 'persisted' : 'not-persisted';
+  } catch {
+    return 'not-persisted';
+  }
+}
