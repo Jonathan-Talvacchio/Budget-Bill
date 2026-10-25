@@ -147,12 +147,40 @@ export function monthlyEquivalent(bill: Pick<Bill, 'amountCents' | 'frequency'>)
 
 export const paymentKey = (billId: string, dueDate: string) => `${billId}|${dueDate}`;
 
+/** The bill's price on a given date, using its price history. */
+export function priceOn(bill: Pick<Bill, 'amountCents' | 'priceHistory'>, date: string): number {
+  return bill.priceHistory?.find((h) => date < h.until)?.amountCents ?? bill.amountCents;
+}
+
+/**
+ * Whether an occurrence counts as paid by auto pay: the bill has auto pay, the
+ * due date has arrived, it's within the auto-pay period, and the user hasn't
+ * marked it as not paid.
+ */
+export function isAutoPaid(
+  bill: Pick<Bill, 'id' | 'autoPay' | 'autoPaySince' | 'anchorDate'>,
+  dueDate: string,
+  today: string,
+  skipped: ReadonlySet<string>,
+): boolean {
+  return (
+    !!bill.autoPay &&
+    dueDate <= today &&
+    dueDate >= (bill.autoPaySince ?? bill.anchorDate) &&
+    !skipped.has(paymentKey(bill.id, dueDate))
+  );
+}
+
 export type Occurrence = {
   bill: Bill;
   dueDate: string;
   amountCents: number;
   paid: boolean;
+  /** Paid by auto pay rather than marked paid by the user. */
+  autoPaid: boolean;
 };
+
+export type AutoPayContext = { today?: string; skipped?: readonly string[] };
 
 export type PeriodSummary = {
   /** Every bill due in the period, whether paid or not. */
@@ -172,17 +200,22 @@ export function summarize(
   incomes: Income[],
   period: Period,
   incomeMode: IncomeMode = 'spread',
+  { today = todayISO(), skipped = [] }: AutoPayContext = {},
 ): PeriodSummary {
   const paidByKey = new Map(payments.map((p) => [paymentKey(p.billId, p.dueDate), p]));
+  const skips = new Set(skipped);
   const occurrences: Occurrence[] = [];
   for (const bill of bills) {
     for (const dueDate of occurrencesInRange(bill, period.start, period.end)) {
       const payment = paidByKey.get(paymentKey(bill.id, dueDate));
+      const autoPaid = !payment && isAutoPaid(bill, dueDate, today, skips);
       occurrences.push({
         bill,
         dueDate,
-        amountCents: payment?.amountCents ?? bill.amountCents,
-        paid: payment !== undefined,
+        // Auto-paid occurrences cost what the bill cost on that date.
+        amountCents: payment?.amountCents ?? (autoPaid ? priceOn(bill, dueDate) : bill.amountCents),
+        paid: payment !== undefined || autoPaid,
+        autoPaid,
       });
     }
   }

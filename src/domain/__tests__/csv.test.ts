@@ -48,8 +48,8 @@ describe('writing', () => {
   it('exports bills with a header row', () => {
     const csv = billsToCSV([bill({ notes: 'family plan, 4K' })], '2026-03-01');
     const rows = parseCSV(csv);
-    expect(rows[0]).toEqual(['Name', 'Amount', 'Frequency', 'First due', 'Next due', 'End date', 'Category', 'Notes']);
-    expect(rows[1]).toEqual(['Netflix', '15.99', 'Monthly', '2026-01-20', '2026-03-20', '', 'Streaming', 'family plan, 4K']);
+    expect(rows[0]).toEqual(['Name', 'Amount', 'Frequency', 'First due', 'Next due', 'End date', 'Category', 'Auto pay', 'Notes']);
+    expect(rows[1]).toEqual(['Netflix', '15.99', 'Monthly', '2026-01-20', '2026-03-20', '', 'Streaming', 'No', 'family plan, 4K']);
   });
 
   it('exports payments with bill names', () => {
@@ -57,7 +57,7 @@ describe('writing', () => {
       [{ billId: 'b1', dueDate: '2026-02-20', paidAt: '2026-02-19T10:00:00Z', amountCents: 1599 }],
       [bill({})],
     );
-    expect(parseCSV(csv)[1]).toEqual(['Netflix', '2026-02-20', '15.99', '2026-02-19']);
+    expect(parseCSV(csv)[1]).toEqual(['Netflix', '2026-02-20', '15.99', '2026-02-19', 'Manual']);
   });
 });
 

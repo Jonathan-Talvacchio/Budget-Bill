@@ -1,6 +1,7 @@
 /**
  * @jest-environment node
  */
+import { todayISO } from '@/domain/billing';
 import { vaultStore } from '@/storage';
 
 import { useStore } from '../store';
@@ -68,6 +69,39 @@ describe('vault lifecycle', () => {
     await s().importBackup(backup, PASS);
     expect(s().status).toBe('unlocked');
     expect(s().vault?.bills).toEqual([netflix]);
+  });
+
+  it('handles auto pay: start date, failed payments and undo', async () => {
+    const today = todayISO();
+    await s().createVault(null, {});
+    // A new bill with auto pay covers it from its first due date.
+    await s().saveBill({ ...netflix, autoPay: true });
+    expect(s().vault!.bills[0].autoPaySince).toBe(netflix.anchorDate);
+
+    // Turning it off and on again for an existing bill only covers it from today.
+    await s().saveBill({ ...netflix, autoPay: false });
+    expect(s().vault!.bills[0]).not.toHaveProperty('autoPaySince', expect.anything());
+    await s().saveBill({ ...netflix, autoPay: true });
+    expect(s().vault!.bills[0].autoPaySince).toBe(today);
+
+    // Editing other fields keeps the start date.
+    await s().saveBill({ ...netflix, autoPay: true, name: 'Netflix 4K' });
+    expect(s().vault!.bills[0].autoPaySince).toBe(today);
+
+    // Toggling an auto-paid occurrence marks it not paid, and back.
+    const b = { ...s().vault!.bills[0], autoPaySince: '2026-01-01' };
+    await s().saveBill(b);
+    useStore.setState({ vault: { ...s().vault!, bills: [b] } });
+    await s().togglePaid(b, '2026-02-20');
+    expect(s().vault!.autoPaySkips).toEqual(['nf|2026-02-20']);
+    expect(s().vault!.payments).toEqual([]);
+    await s().togglePaid(b, '2026-02-20');
+    expect(s().vault!.autoPaySkips).toEqual([]);
+
+    // Deleting the bill clears its skips.
+    await s().togglePaid(b, '2026-02-20');
+    await s().deleteBill('nf');
+    expect(s().vault!.autoPaySkips).toEqual([]);
   });
 
   it('works without a passphrase', async () => {

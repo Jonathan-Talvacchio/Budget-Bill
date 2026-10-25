@@ -61,6 +61,10 @@ export const billSchema = z.object({
   anchorDate: isoDate,
   endDate: isoDate.optional(),
   notes: text(500).optional(),
+  /** Paid automatically (e.g. card or bank auto-pay): counts as paid once each due date arrives. */
+  autoPay: z.boolean().optional(),
+  /** Auto pay covers occurrences on or after this date (set when it was turned on). */
+  autoPaySince: isoDate.optional(),
   /** Earlier prices, oldest first: each was the price until (not including) `until`. */
   priceHistory: z.array(z.object({ amountCents: cents, until: isoDate })).max(100).optional(),
   createdAt: z.string().max(40),
@@ -111,6 +115,8 @@ export const vaultSchema = z.object({
   incomes: z.array(incomeSchema).max(100),
   /** Bill occurrences already reminded about (paymentKey format), so each is notified once. */
   reminderLog: z.array(z.string().max(120)).max(2000).default([]),
+  /** Auto-pay occurrences the user marked as not paid (e.g. a failed payment), paymentKey format. */
+  autoPaySkips: z.array(z.string().max(120)).max(5000).default([]),
   settings: settingsSchema,
 });
 export type Vault = z.infer<typeof vaultSchema>;
@@ -122,6 +128,7 @@ export function emptyVault(settings?: Partial<Settings>): Vault {
     payments: [],
     incomes: [],
     reminderLog: [],
+    autoPaySkips: [],
     settings: {
       currency: 'USD',
       autoLockMinutes: 5,

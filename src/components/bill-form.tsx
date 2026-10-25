@@ -51,6 +51,7 @@ export function BillForm({ bill, defaults, onDone }: Props) {
   const [category, setCategory] = useState<Category>(start?.category ?? 'other');
   const [anchorDate, setAnchorDate] = useState(bill?.anchorDate ?? todayISO());
   const [hasEnd, setHasEnd] = useState(Boolean(bill?.endDate));
+  const [autoPay, setAutoPay] = useState(Boolean(bill?.autoPay));
   const [endDate, setEndDate] = useState(bill?.endDate ?? '');
   const [notes, setNotes] = useState(bill?.notes ?? '');
   const [submitted, setSubmitted] = useState(false);
@@ -87,6 +88,7 @@ export function BillForm({ bill, defaults, onDone }: Props) {
         frequency,
         anchorDate,
         endDate: hasEnd ? endDate : undefined,
+        autoPay,
         notes: notes.trim() || undefined,
         createdAt: bill?.createdAt ?? now,
         updatedAt: now,
@@ -151,6 +153,20 @@ export function BillForm({ bill, defaults, onDone }: Props) {
         {hasEnd && (
           <DateField label="Last payment date" value={endDate} onChange={setEndDate} error={show(errors.endDate)} />
         )}
+        <Row>
+          <Chip
+            label={autoPay ? '✓ Auto pay' : 'Auto pay'}
+            selected={autoPay}
+            onPress={() => setAutoPay(!autoPay)}
+          />
+        </Row>
+        <ThemedText type="small" themeColor="textSecondary">
+          {autoPay
+            ? bill && !bill.autoPay
+              ? 'Paid automatically from today on: each due date counts as paid when it arrives. Earlier unpaid dates stay as they are.'
+              : 'Paid automatically: each due date counts as paid when it arrives, and no reminders are sent. If a payment fails, untick it on the overview.'
+            : 'Turn on if this bill is paid automatically by card or bank.'}
+        </ThemedText>
       </Card>
 
       {history.length > 0 && (

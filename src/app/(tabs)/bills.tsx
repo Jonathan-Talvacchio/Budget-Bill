@@ -77,7 +77,8 @@ export default function Bills() {
                     <View style={styles.grow}>
                       <ThemedText>{bill.name}</ThemedText>
                       <ThemedText type="small" themeColor="textSecondary">
-                        {FREQUENCY_LABELS[bill.frequency]} ·{' '}
+                        {FREQUENCY_LABELS[bill.frequency]}
+                        {bill.autoPay ? ' · Auto pay' : ''} ·{' '}
                         {next ? `next ${formatDueDate(next, true)}` : 'ended'}
                       </ThemedText>
                     </View>

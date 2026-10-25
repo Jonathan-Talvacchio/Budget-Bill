@@ -32,7 +32,11 @@ export default function Dashboard() {
 
   const period = view === 'month' ? monthPeriod(year, month) : yearPeriod(year);
   const summary = useMemo(
-    () => summarize(vault.bills, vault.payments, vault.incomes, period, vault.settings.incomeMode),
+    () =>
+      summarize(vault.bills, vault.payments, vault.incomes, period, vault.settings.incomeMode, {
+        today,
+        skipped: vault.autoPaySkips,
+      }),
     [vault, period.start, period.end], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const step = (dir: 1 | -1) => setCursor((c) => c + dir * (view === 'month' ? 1 : 12));
@@ -79,6 +83,15 @@ export default function Dashboard() {
       )}
     </Screen>
   );
+}
+
+/** "Paid", "Auto-paid", "Auto pay on", "Overdue" or "Due", followed by the date. */
+function statusText(o: Occurrence, overdue: boolean): string {
+  if (o.autoPaid) return 'Auto-paid';
+  if (o.paid) return 'Paid';
+  // Only future dates: one due today or earlier that isn't paid was marked as not paid.
+  if (o.bill.autoPay && o.dueDate > todayISO()) return 'Auto pay on';
+  return overdue ? 'Overdue' : 'Due';
 }
 
 function NavArrow({ label, hint, onPress }: { label: string; hint: string; onPress: () => void }) {
@@ -169,7 +182,11 @@ function MonthList({ occurrences, today }: { occurrences: Occurrence[]; today: s
                 <Pressable
                   role="checkbox"
                   aria-checked={o.paid}
-                  accessibilityLabel={`Mark ${o.bill.name} ${o.paid ? 'unpaid' : 'paid'}`}
+                  accessibilityLabel={
+                    o.autoPaid
+                      ? `${o.bill.name} was paid by auto pay. Mark as not paid`
+                      : `Mark ${o.bill.name} ${o.paid ? 'unpaid' : 'paid'}`
+                  }
                   onPress={() => togglePaid(o.bill, o.dueDate)}
                   style={[
                     styles.check,
@@ -187,7 +204,7 @@ function MonthList({ occurrences, today }: { occurrences: Occurrence[]; today: s
                     {o.bill.name}
                   </ThemedText>
                   <ThemedText type="small" themeColor={overdue ? 'negative' : 'textSecondary'}>
-                    {o.paid ? 'Paid' : overdue ? 'Overdue' : 'Due'} {formatDueDate(o.dueDate)}
+                    {statusText(o, overdue)} {formatDueDate(o.dueDate)}
                   </ThemedText>
                 </Pressable>
                 <ThemedText themeColor={o.paid ? 'textSecondary' : 'text'}>

@@ -3,7 +3,7 @@
  * so the UI warns before export. Export defends against spreadsheet formula
  * injection; import validates every row through the bill schema.
  */
-import { nextDueDate, todayISO } from './billing';
+import { isAutoPaid, nextDueDate, occurrencesInRange, paymentKey, priceOn, todayISO } from './billing';
 import { CATALOG } from './catalog';
 import { centsToInput, parseMoneyToCents } from './money';
 import {
@@ -41,6 +41,7 @@ export const BILL_CSV_HEADERS = [
   'Next due',
   'End date',
   'Category',
+  'Auto pay',
   'Notes',
 ] as const;
 
@@ -53,17 +54,34 @@ export function billsToCSV(bills: Bill[], today = todayISO()): string {
     nextDueDate(b, today) ?? '',
     b.endDate ?? '',
     CATEGORY_LABELS[b.category],
+    b.autoPay ? 'Yes' : 'No',
     b.notes ?? '',
   ]);
   return toCSV([[...BILL_CSV_HEADERS], ...rows]);
 }
 
-export function paymentsToCSV(payments: Payment[], bills: Bill[]): string {
+/** Payment history: payments the user recorded plus occurrences paid by auto pay up to today. */
+export function paymentsToCSV(
+  payments: Payment[],
+  bills: Bill[],
+  autoPaySkips: readonly string[] = [],
+  today = todayISO(),
+): string {
   const names = new Map(bills.map((b) => [b.id, b.name]));
-  const rows = [...payments]
-    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-    .map((p) => [names.get(p.billId) ?? '(deleted bill)', p.dueDate, centsToInput(p.amountCents), p.paidAt.slice(0, 10)]);
-  return toCSV([['Bill', 'Due date', 'Amount paid', 'Paid on'], ...rows]);
+  const recorded = new Set(payments.map((p) => paymentKey(p.billId, p.dueDate)));
+  const skips = new Set(autoPaySkips);
+  const rows: { due: string; cells: string[] }[] = payments.map((p) => ({
+    due: p.dueDate,
+    cells: [names.get(p.billId) ?? '(deleted bill)', p.dueDate, centsToInput(p.amountCents), p.paidAt.slice(0, 10), 'Manual'],
+  }));
+  for (const b of bills.filter((x) => x.autoPay)) {
+    for (const due of occurrencesInRange(b, b.autoPaySince ?? b.anchorDate, today)) {
+      if (recorded.has(paymentKey(b.id, due)) || !isAutoPaid(b, due, today, skips)) continue;
+      rows.push({ due, cells: [b.name, due, centsToInput(priceOn(b, due)), due, 'Auto pay'] });
+    }
+  }
+  rows.sort((a, b) => a.due.localeCompare(b.due) || a.cells[0].localeCompare(b.cells[0]));
+  return toCSV([['Bill', 'Due date', 'Amount paid', 'Paid on', 'How'], ...rows.map((r) => r.cells)]);
 }
 
 // ---------------------------------------------------------------- reading
@@ -105,7 +123,7 @@ export function parseCSV(text: string): string[][] {
   return rows.filter((r) => r.some((c) => c.trim() !== ''));
 }
 
-type Field = 'name' | 'amount' | 'frequency' | 'firstDue' | 'nextDue' | 'endDate' | 'category' | 'notes';
+type Field = 'name' | 'amount' | 'frequency' | 'firstDue' | 'nextDue' | 'endDate' | 'category' | 'autoPay' | 'notes';
 
 const HEADER_ALIASES: Record<Field, string[]> = {
   name: ['name', 'bill', 'service', 'payee', 'description', 'subscription'],
@@ -115,6 +133,7 @@ const HEADER_ALIASES: Record<Field, string[]> = {
   nextDue: ['next due', 'due date', 'due', 'date', 'next payment', 'renews'],
   endDate: ['end date', 'ends', 'end'],
   category: ['category', 'type'],
+  autoPay: ['auto pay', 'autopay', 'auto-pay', 'automatic payment', 'auto debit'],
   notes: ['notes', 'note', 'memo', 'comment'],
 };
 
@@ -141,6 +160,14 @@ export function parseFrequency(s: string): Frequency | null {
   if (/^(monthly|month|mo|every month|per month|\/mo)$/.test(v)) return 'monthly';
   if (/^(quarterly|quarter|every 3 months)$/.test(v)) return 'quarterly';
   if (/^(yearly|year|yr|annual|annually|every year|per year|\/yr)$/.test(v)) return 'yearly';
+  return null;
+}
+
+/** Yes/No-style cells; blank means no. Returns null if unreadable. */
+export function parseYesNo(s: string): boolean | null {
+  const v = norm(s);
+  if (['', 'no', 'n', 'false', '0', 'off', 'manual'].includes(v)) return false;
+  if (['yes', 'y', 'true', '1', 'on', 'auto', 'auto pay', 'autopay'].includes(v)) return true;
   return null;
 }
 
@@ -206,6 +233,8 @@ export function parseBillsCSV(text: string, makeId: () => string, today = todayI
     const endText = get('endDate');
     const endDate = endText ? parseDate(endText) : undefined;
     if (endDate === null) return skipped.push({ row: rowNo, reason: `“${endText}” is not an end date.` });
+    const autoPay = parseYesNo(get('autoPay'));
+    if (autoPay === null) return skipped.push({ row: rowNo, reason: `Use Yes or No for auto pay, not “${get('autoPay')}”.` });
 
     const candidate = {
       id: makeId(),
@@ -215,6 +244,7 @@ export function parseBillsCSV(text: string, makeId: () => string, today = todayI
       frequency,
       anchorDate,
       endDate,
+      autoPay: autoPay || undefined,
       notes: get('notes').slice(0, 500) || undefined,
       createdAt: now,
       updatedAt: now,

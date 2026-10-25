@@ -44,6 +44,7 @@ Users add bills from a **catalog of common services** or as **custom** entries. 
 | U4 | add a custom bill with any name, amount, frequency, due date and end date | ✅ |
 | U5 | see this month's bills sorted by due date, including which are overdue | ✅ |
 | U6 | mark a bill as paid for a specific due date | ✅ |
+| U6b | set a bill to auto pay so it counts as paid on its due date, and untick a payment that failed | ✅ |
 | U7 | see how much is left to spend this month and this year | ✅ |
 | U8 | see a month-by-month breakdown of the year | ✅ |
 | U9 | see what each bill costs per month on average (e.g. $139/yr ≈ $11.58/mo) | ✅ |
@@ -75,8 +76,8 @@ The onboarding and unlock screens are rendered **by the root layout instead of t
 All data lives in one **vault** object. It is validated with zod (`src/domain/schema.ts`) every time it is loaded or imported.
 
 ```ts
-Vault    { version: 1, bills: Bill[], payments: Payment[], incomes: Income[], settings: Settings, reminderLog: string[] }
-Bill     { id, name, catalogId?, category, amountCents, frequency, anchorDate, endDate?, notes?, priceHistory?, createdAt, updatedAt }
+Vault    { version: 1, bills: Bill[], payments: Payment[], incomes: Income[], settings: Settings, reminderLog: string[], autoPaySkips: string[] }
+Bill     { id, name, catalogId?, category, amountCents, frequency, anchorDate, endDate?, notes?, autoPay?, autoPaySince?, priceHistory?, createdAt, updatedAt }
 priceHistory: { amountCents, until }[]   // earlier prices, oldest first; recorded when an amount is edited
 Payment  { billId, dueDate, paidAt, amountCents }     // settles one occurrence
 Income   { id, label, amountCents, frequency, anchorDate? }   // anchorDate = a payday
@@ -88,7 +89,7 @@ frequency ∈ weekly | monthly | quarterly | yearly
 - **Dates are `YYYY-MM-DD` strings**, compared as strings and calculated on calendar fields. Results never depend on the time zone or daylight saving time.
 - A payment records the amount actually paid. If a bill's price changes later, past periods still show what was paid.
 - The schema caps array lengths and string sizes, so a malicious backup file cannot exhaust memory.
-- Every field added after v1 is optional or has a schema default (`incomeMode`, `reminders`, `reminderLog`, `priceHistory`), so older vaults and backups load unchanged.
+- Every field added after v1 is optional or has a schema default (`incomeMode`, `reminders`, `reminderLog`, `priceHistory`, `autoPay`, `autoPaySince`, `autoPaySkips`), so older vaults and backups load unchanged.
 - **Price history:** editing a bill's amount records the old price as ending today (`withPriceChange` in `src/domain/insights.ts`). Several edits on the same day count as one change, and editing back to the original price that day removes it.
 
 ## 6. Calculation rules (`src/domain/billing.ts`)
@@ -105,6 +106,13 @@ frequency ∈ weekly | monthly | quarterly | yearly
   - `incomeMode` defaults to `'spread'` in the schema, so older vaults and backups load unchanged.
 - **Left to spend** = `income − totalDue` for the period. A negative value is shown as a shortfall.
 - **Monthly equivalent** of a bill = yearly cost ÷ 12, used on the Bills screen.
+- **Auto pay** (`isAutoPaid`):
+  - An occurrence of an auto-pay bill counts as **paid once its due date arrives** (today included). Future ones show "Auto pay on <date>".
+  - It applies from `autoPaySince`. For a new bill that's its first due date. When auto pay is turned on for an existing bill, it's today, so old unpaid dates are never marked paid after the fact. Imported bills without a start date use their first due date.
+  - Auto-paid occurrences cost what the bill cost on that date (`priceOn`, using the price history).
+  - Nothing is written for each auto payment. Paid status is computed, so no background job is needed.
+  - Unticking an auto-paid occurrence (e.g. a failed payment) adds it to `vault.autoPaySkips`, and ticking it again removes it. A recorded manual payment always takes precedence.
+  - Auto-pay bills are left out of reminders. Payment-history CSV lists auto-paid occurrences with "How: Auto pay", and the bills CSV has an "Auto pay" Yes/No column that import understands.
 
 This code has no dependencies and is covered by unit tests: leap years, month-end handling, quarterly bills across years, weekly bills across DST changes, end dates, and totals.
 
@@ -228,7 +236,7 @@ github.io is already on the HSTS preload list, so HTTPS is enforced today.
 - **Install:** Settings → Install app uses the browser's install prompt (Chrome, Edge, Android) or shows the Safari "Add to Home Screen" steps.
 
 ### 7.9 Bill reminders (web)
-- Off by default. Turning them on asks for notification permission. The user picks a window (same day, 1, 3 or 7 days before), and each unpaid occurrence is notified **once**, tracked in `vault.reminderLog`, which is pruned after 60 days.
+- Off by default. Turning them on asks for notification permission. Bills on auto pay are never reminded about. The user picks a window (same day, 1, 3 or 7 days before), and each unpaid occurrence is notified **once**, tracked in `vault.reminderLog`, which is pruned after 60 days.
 - **Privacy:** by default a notification says only how many bills are due ("2 bills due in the next 3 days"), so nothing private shows on a lock screen. Names, amounts and dates appear only if the user turns on "Show bill names and amounts".
 - Notifications are created on the device through the service worker. Nothing is sent to a server.
 - **Limit:** without a push server, which this design deliberately doesn't have, the web app checks only while it is open: on start, every 30 minutes and on return to the foreground. Background push would need a server that knows when a user's bills are due, which conflicts with the privacy model. Reminders that work while the app is closed come with the mobile apps, via local `expo-notifications` scheduling (§9).

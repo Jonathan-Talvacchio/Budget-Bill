@@ -26,7 +26,7 @@ export function CsvSection() {
       'Export',
     );
     if (!ok) return;
-    const text = kind === 'bills' ? billsToCSV(vault.bills) : paymentsToCSV(vault.payments, vault.bills);
+    const text = kind === 'bills' ? billsToCSV(vault.bills) : paymentsToCSV(vault.payments, vault.bills, vault.autoPaySkips);
     try {
       await saveTextFile(`budget-bill-${kind}-${todayISO()}.csv`, text, 'text/csv');
     } catch (e) {
@@ -79,7 +79,7 @@ export function CsvSection() {
           label="Export payment history (.csv)"
           variant="secondary"
           onPress={() => exportCsv('payments')}
-          disabled={vault.payments.length === 0}
+          disabled={vault.payments.length === 0 && !vault.bills.some((b) => b.autoPay)}
         />
         <Divider />
         <ThemedText type="small" themeColor="textSecondary">

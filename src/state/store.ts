@@ -9,7 +9,7 @@
  */
 import { create } from 'zustand';
 
-import { paymentKey, todayISO } from '@/domain/billing';
+import { isAutoPaid, paymentKey, priceOn, todayISO } from '@/domain/billing';
 import { withPriceChange } from '@/domain/insights';
 import { updateReminderLog } from '@/domain/reminders';
 import {
@@ -277,7 +277,17 @@ export const useStore = create<State & Actions>()((set, get) => {
     saveBill: (bill) =>
       update((v) => {
         const prev = v.bills.find((b) => b.id === bill.id);
-        const next = withPriceChange(prev, bill, todayISO());
+        const today = todayISO();
+        // Auto pay covers a new bill from its first due date, but an existing bill only
+        // from today, so turning it on never marks old unpaid occurrences as paid.
+        const autoPaySince = !bill.autoPay
+          ? undefined
+          : prev?.autoPay
+            ? prev.autoPaySince
+            : prev
+              ? today
+              : bill.anchorDate;
+        const next = withPriceChange(prev, { ...bill, autoPay: bill.autoPay || undefined, autoPaySince }, today);
         return {
           ...v,
           bills: prev ? v.bills.map((b) => (b.id === bill.id ? next : b)) : [...v.bills, next],
@@ -294,25 +304,32 @@ export const useStore = create<State & Actions>()((set, get) => {
         ...v,
         bills: v.bills.filter((b) => b.id !== id),
         payments: v.payments.filter((p) => p.billId !== id),
+        autoPaySkips: v.autoPaySkips.filter((k) => !k.startsWith(`${id}|`)),
       })),
 
     togglePaid: (bill, dueDate) =>
       update((v) => {
         const key = paymentKey(bill.id, dueDate);
-        const has = v.payments.some((p) => paymentKey(p.billId, p.dueDate) === key);
+        const skips = new Set(v.autoPaySkips);
+        // 1. A recorded payment: undo it.
+        if (v.payments.some((p) => paymentKey(p.billId, p.dueDate) === key)) {
+          return { ...v, payments: v.payments.filter((p) => paymentKey(p.billId, p.dueDate) !== key) };
+        }
+        // 2. Paid by auto pay: mark it as not paid (e.g. the payment failed).
+        if (isAutoPaid(bill, dueDate, todayISO(), skips)) {
+          return { ...v, autoPaySkips: [...v.autoPaySkips, key].slice(-5000) };
+        }
+        // 3. Previously marked as not paid: back to paid by auto pay.
+        if (skips.has(key)) {
+          return { ...v, autoPaySkips: v.autoPaySkips.filter((k) => k !== key) };
+        }
+        // 4. Otherwise record a payment.
         return {
           ...v,
-          payments: has
-            ? v.payments.filter((p) => paymentKey(p.billId, p.dueDate) !== key)
-            : [
-                ...v.payments,
-                {
-                  billId: bill.id,
-                  dueDate,
-                  amountCents: bill.amountCents,
-                  paidAt: new Date().toISOString(),
-                },
-              ],
+          payments: [
+            ...v.payments,
+            { billId: bill.id, dueDate, amountCents: priceOn(bill, dueDate), paidAt: new Date().toISOString() },
+          ],
         };
       }),
 

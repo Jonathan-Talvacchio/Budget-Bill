@@ -7,7 +7,10 @@ import type { Bill, Payment } from './schema';
 
 export type DueReminder = { bill: Bill; dueDate: string; key: string };
 
-/** Unpaid occurrences due from today through `daysBefore` days ahead that haven't been reminded yet. */
+/**
+ * Unpaid occurrences due from today through `daysBefore` days ahead that haven't
+ * been reminded yet. Auto-pay bills are left out: there's nothing to do for them.
+ */
 export function dueReminders(
   bills: Bill[],
   payments: Payment[],
@@ -20,6 +23,7 @@ export function dueReminders(
   const end = addDays(today, daysBefore);
   const out: DueReminder[] = [];
   for (const bill of bills) {
+    if (bill.autoPay) continue;
     for (const dueDate of occurrencesInRange(bill, today, end)) {
       const key = paymentKey(bill.id, dueDate);
       if (!paid.has(key) && !done.has(key)) out.push({ bill, dueDate, key });
